@@ -1,0 +1,30 @@
+--------------------------------------------------------------------------------
+dataset_root: C:\Users\ben61\Bus-Onda\ai-vision\my_ocr_project\data_for_easyocr\lmdb\train
+opt.select_data: ['/']
+opt.batch_ratio: ['1']
+--------------------------------------------------------------------------------
+dataset_root:    C:\Users\ben61\Bus-Onda\ai-vision\my_ocr_project\data_for_easyocr\lmdb\train	 dataset: /
+sub-directory:	/.	 num samples: 854
+num total samples of /: 854 x 1.0 (total_data_usage_ratio) = 854
+num samples of / per batch: 128 x 1.0 (batch_ratio) = 128
+--------------------------------------------------------------------------------
+Total_batch_size: 128 = 128
+--------------------------------------------------------------------------------
+dataset_root:    C:\Users\ben61\Bus-Onda\ai-vision\my_ocr_project\data_for_easyocr\lmdb\val	 dataset: /
+sub-directory:	/.	 num samples: 95
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+dataset_root: C:\Users\ben61\Bus-Onda\ai-vision\my_ocr_project\data_for_easyocr\lmdb\train
+opt.select_data: ['/']
+opt.batch_ratio: ['1']
+--------------------------------------------------------------------------------
+dataset_root:    C:\Users\ben61\Bus-Onda\ai-vision\my_ocr_project\data_for_easyocr\lmdb\train	 dataset: /
+sub-directory:	/.	 num samples: 854
+num total samples of /: 854 x 1.0 (total_data_usage_ratio) = 854
+num samples of / per batch: 128 x 1.0 (batch_ratio) = 128
+--------------------------------------------------------------------------------
+Total_batch_size: 128 = 128
+--------------------------------------------------------------------------------
+dataset_root:    C:\Users\ben61\Bus-Onda\ai-vision\my_ocr_project\data_for_easyocr\lmdb\val	 dataset: /
+sub-directory:	/.	 num samples: 95
+--------------------------------------------------------------------------------
