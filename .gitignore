@@ -61,7 +61,6 @@ ENV/
 *.png
 *.webp
 *.mdb
-*.pth
 # ===== 공통 (중요!) =====
 .DS_Store
 .idea/
