@@ -56,7 +56,11 @@ ENV/
 *.egg-info/
 .ipynb_checkpoints/
 *.ipynb
-
+# 이미지 파일 무시
+*.jpg
+*.png
+*.webp
+*.mdb
 # ===== 공통 (중요!) =====
 .DS_Store
 .idea/
