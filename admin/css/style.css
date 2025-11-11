@@ -1,0 +1,55 @@
+:root {
+  --bg: #0f1220;
+  --card: #171a2b;
+  --text: #e9ecf1;
+  --muted: #9aa3b2;
+  --accent: #6ea8fe;
+  --ok: #28c76f;
+  --warn: #ff9f43;
+  --err: #ea5455;
+  --border: #262c42;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Arial, sans-serif;
+}
+.topbar {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 18px; border-bottom:1px solid var(--border); background:#121524;
+}
+.topbar h1 { margin:0; font-size:18px; }
+.status-pill {
+  padding:6px 10px; border:1px solid var(--border); border-radius:999px; color:var(--muted);
+}
+.grid {
+  padding:18px; display:grid; gap:16px;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+}
+.card {
+  background: var(--card); border:1px solid var(--border); border-radius:12px;
+  padding:14px;
+}
+.card h2 { margin:0 0 10px; font-size:16px; }
+.table-wrap { max-height:260px; overflow:auto; border:1px solid var(--border); border-radius:8px; }
+table { width:100%; border-collapse:collapse; }
+thead th { position:sticky; top:0; background:#111423; color:#c9cfdb; text-align:left; font-weight:600; padding:8px; border-bottom:1px solid var(--border); }
+tbody td { padding:8px; border-bottom:1px solid var(--border); color:#d7dbe6; }
+tbody tr:hover { background:#13182a; }
+.actions { margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
+button {
+  background:#1c2340; color:#e6ebf7; border:1px solid var(--border); padding:8px 12px; border-radius:8px; cursor:pointer;
+}
+button:hover { background:#232b53; }
+.stack { display:flex; flex-direction:column; gap:8px; }
+input, select, textarea {
+  width:100%; background:#0f1324; color:#e6ebf7; border:1px solid var(--border);
+  border-radius:8px; padding:8px;
+}
+.log { background:#0c1020; border:1px solid var(--border); border-radius:8px; padding:10px; height:220px; overflow:auto; }
+.log .ok { color: var(--ok); }
+.log .warn { color: var(--warn); }
+.log .err { color: var(--err); }
+.badge { padding:2px 6px; border-radius:6px; font-size:12px; border:1px solid var(--border); color:#b8c0d7; }
+.badge.null { color:#a8b0c6; opacity:0.7; }
