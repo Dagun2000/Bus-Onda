@@ -77,7 +77,8 @@ fun HomeScreen(
             arrayOf(
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.RECORD_AUDIO
+                Manifest.permission.RECORD_AUDIO ,
+                Manifest.permission.CAMERA
             )
         )
     }
