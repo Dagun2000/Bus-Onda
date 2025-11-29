@@ -40,7 +40,7 @@ const mobileWSS = new WebSocketServer({ noServer: true });
 const deviceWSS = new WebSocketServer({ noServer: true });
 const stopWSS   = new WebSocketServer({ noServer: true });
 adminWSS.on('connection', (ws) => {
-  console.log('UPGRADE path = /admin-ws'); // ✅ 관리자 WS 업그레이드 확인
+  console.log('UPGRADE path = /admin-ws'); // 관리자 WS 업그레이드 확인
   adminClients.add(ws);
   ws.on('close', () => adminClients.delete(ws));
 });

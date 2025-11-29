@@ -142,13 +142,13 @@ router.post('/ride/request', (req, res) => {
   if (!deviceId || !lineNo)
     return res.status(400).json(wrap(false, null, { code: 'VALIDATION_ERROR', message: 'deviceId and lineNo required' }));
 
-  // ✅ rideRequests.js 사용
+  //  rideRequests.js 사용
   const request = createRideRequest({ deviceId, busNumber: lineNo, direction, userLocation });
 
   console.log(`[RIDE] Request created: ${request.requestId} (${lineNo}, ${direction})`);
   res.json(wrap(true, { requestId: request.requestId, status: request.status }));
 
-  // ✅ 버스 단말에게 브로드캐스트
+  //  버스 단말에게 브로드캐스트
   for (const [busId, bus] of activeBuses.entries()) {
     if (bus.busNumber === lineNo && bus.ws?.readyState === 1) {
       bus.ws.send(

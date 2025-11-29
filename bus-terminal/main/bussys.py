@@ -102,7 +102,7 @@ class WSClient(threading.Thread):
         self.rtt_ms = None
         self.stop_flag = threading.Event()
         self.ws = None
-        self.api = None  # ✅ BusAPI 인스턴스를 외부에서도 접근 가능하게 저장
+        self.api = None  #  BusAPI 인스턴스를 외부에서도 접근 가능하게 저장
 
     def run(self):
         import websocket, json
@@ -116,7 +116,7 @@ class WSClient(threading.Thread):
             busno = (cfg.get("bus_no") or None)
             vehno = (cfg.get("vehicle_no") or None)
 
-            # ✅ BusAPI 인스턴스 생성 및 보관
+            #  BusAPI 인스턴스 생성 및 보관
             self.api = BusAPI(
                 device_id=cfg["device_id"],
                 bus_no=cfg["bus_no"],
@@ -126,10 +126,10 @@ class WSClient(threading.Thread):
             )
             api = self.api  # alias
 
-            # ✅ 상태 기본값 보장
+            #  상태 기본값 보장
             self.api.status = "idle"
 
-            # ✅ 서버 명령 이벤트 등록
+            #  서버 명령 이벤트 등록
             self.api.on("ride_request", lambda d: (
                 setattr(self.api, "status", "ride_pending"),
                 LOG.add("시각장애인 승차 요청 수신")
@@ -150,7 +150,7 @@ class WSClient(threading.Thread):
                 LOG.add("강제 리셋 명령 수신 — 상태 초기화 중")
             ))
 
-            # ✅ BusAPI 스레드 시작
+            #  BusAPI 스레드 시작
             self.api.start()
 
             # IP / ID 확인
@@ -170,7 +170,7 @@ class WSClient(threading.Thread):
                 self.last_err = ""
                 LOG.add("WS 연결됨")
 
-                # ✅ hello 패킷에 device_type 추가
+                #  hello 패킷에 device_type 추가
                 '''
                 hello = {
                     "type": "hello",
@@ -194,7 +194,7 @@ class WSClient(threading.Thread):
                 while not self.stop_flag.is_set():
                     now = time.time()
                     '''
-                    # ✅ 주기적 telemetry 전송
+                    #  주기적 telemetry 전송
                     if now - last_send >= send_interval:
                         msg_id = f"t-{int(now*1000)}-{random.randint(0,999)}"
                         telem = {
@@ -206,14 +206,14 @@ class WSClient(threading.Thread):
                                 "ip": local_ip(),
                                 "device_type": self.device_type
                             },
-                            "payload": {"status": self.api.status}  # ✅ 현재 상태 포함
+                            "payload": {"status": self.api.status}  #  현재 상태 포함
                         }
                         self.ws.send(json.dumps(telem))
                         last_send = now
                         pending_ack = msg_id
                         sent_ts = now
                 '''
-                    # ✅ 수신 처리
+                    #  수신 처리
                     try:
                         raw = self.ws.recv()
                         if not raw:
