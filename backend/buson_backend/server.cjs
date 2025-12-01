@@ -5,15 +5,21 @@ const path = require('path');
 const cors = require('cors');
 const { WebSocketServer } = require('ws');
 require('dotenv').config();
+const { attachDeviceWS } = require('./deviceWS.cjs');
+const { rideRequests } = require('./models/rideRequests.cjs');
+// const { pushToApp } = require('./mobile/appWs.cjs');
+// const { pushToApp } = require('../mobile/appWs.cjs');
+const { activeBuses } = require('./mobile/appApi.cjs');
 
 const app = express();
 const PORT = process.env.HTTP_PORT || 3000;
 //const adminWSS = new WebSocketServer({ server, path: '/admin-ws' });
-const { router: appApi } = require('./appApi.cjs');
-app.use('/api/v1', appApi);
-
 app.use(cors());
 app.use(express.json());
+
+const { router: appApi } = require('./mobile/appApi.cjs');
+app.use('/api/v1', appApi);
+
 
 // Admin 정적
 const __root = __dirname;
@@ -39,71 +45,46 @@ const adminWSS  = new WebSocketServer({ noServer: true });
 const mobileWSS = new WebSocketServer({ noServer: true });
 const deviceWSS = new WebSocketServer({ noServer: true });
 const stopWSS   = new WebSocketServer({ noServer: true });
-adminWSS.on('connection', (ws) => {
-  console.log('UPGRADE path = /admin-ws'); // 관리자 WS 업그레이드 확인
-  adminClients.add(ws);
-  ws.on('close', () => adminClients.delete(ws));
+
+
+adminWSS.on('connection', (ws, req) => {
+  try {
+    console.log(`[ADMIN-WS] Connected: ${req.socket.remoteAddress}`);
+    ws.send(JSON.stringify({ type: 'welcome', msg: 'admin connected' }));
+
+    // 서버 → 클라이언트 주기적 ping
+    const pingTimer = setInterval(() => {
+      if (ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
+      }
+    }, 15000);
+
+    // 클라이언트 → 서버 pong 응답 or 기타 메시지
+    ws.on('message', (data) => {
+      let msg;
+      try { msg = JSON.parse(data); } catch { return; }
+
+      if (msg.type === 'pong') {
+        // pong 수신 로그
+        console.log(`[ADMIN-WS] pong from admin`);
+        return;
+      }
+
+      console.log('[ADMIN-WS message]', msg);
+    });
+
+    ws.on('close', () => {
+      clearInterval(pingTimer);
+      console.log('[ADMIN-WS] Closed');
+    });
+  } catch (err) {
+    console.error('[ADMIN-WS ERROR]', err);
+  }
 });
 
-//const devices = new Map(); // id -> { ws, meta, lastSeen }
-// deviceWSS.on('connection', (ws, req) => {
-//   const ip = (req.socket?.remoteAddress || '').replace('::ffff:', '');
-//   let devId = null;
 
-//   ws.on('message', (buf) => {
-//     let msg; try { msg = JSON.parse(buf.toString()); } catch { return; }
-//     const now = Date.now();
-//     if (!msg?.type || !msg?.device) return;
 
-//     if (!devId && msg.device?.id) devId = msg.device.id;
 
-//     const prev = devices.get(devId) || {};
-//     const meta = {
-//       ...(prev.meta || {}),
-//       id: msg.device?.id || prev.meta?.id || devId,
-//       ip: msg.device?.ip || ip || prev.meta?.ip || null,
-//       bus_number: msg.payload?.bus_number ?? prev.meta?.bus_number ?? null,
-//       vehicle_number: msg.payload?.vehicle_number ?? prev.meta?.vehicle_number ?? null,
-//       stop_id: msg.payload?.stop_id ?? prev.meta?.stop_id ?? null,
-//     };
-//     devices.set(devId, { ws, meta, lastSeen: now });
-
-//     if (msg.msg_id && ws.readyState === 1) {
-//       ws.send(JSON.stringify({ type: 'ack', ack_id: msg.msg_id, ts: now }));
-//     }
-
-//     if (['hello','telemetry','event'].includes(msg.type)) {
-//       adminBroadcast({
-//         type: 'connection_update',
-//         deviceType: 'bus',
-//         list: [...devices.values()].map(d => ({
-//           ip: d.meta?.ip || null,
-//           id: d.meta?.id || null,
-//           busNumber: d.meta?.bus_number ?? null,
-//           vehicleNumber: d.meta?.vehicle_number ?? null,
-//           lastSeen: d.lastSeen || null
-//         }))
-//       });
-//     }
-//   });
-
-//   ws.on('close', () => {
-//     if (devId) {
-//       devices.delete(devId);
-//       adminBroadcast({
-//         type: 'connection_update',
-//         deviceType: 'bus',
-//         list: [...devices.values()].map(d => ({
-//           ip: d.meta?.ip || null,
-//           id: d.meta?.id || null,
-//           busNumber: d.meta?.bus_number ?? null,
-//           vehicleNumber: d.meta?.vehicle_number ?? null,
-//           lastSeen: d.lastSeen || null
-//         }))
-//       });
-//     }
-//   });
-// });
 
 // ---------- 단말 WS 공통 처리 ----------
 function setupWS(wss, deviceType) {
@@ -132,12 +113,12 @@ function setupWS(wss, deviceType) {
       let msg; try { msg = JSON.parse(buf.toString()); } catch { return; }
       const now = Date.now();
 
-      if (deviceType === 'bus')
-      console.log('[DEBUG] from bus:', msg);
-      
+      if (deviceType === 'bus') console.log('[DEBUG] from bus:', msg);
+
       if (!msg?.device?.id) return;
       devId ||= msg.device.id;
 
+      // 상태 갱신
       clients.set(devId, {
         ws,
         meta: {
@@ -152,8 +133,51 @@ function setupWS(wss, deviceType) {
         lastSeen: now,
       });
 
-      ws.send(JSON.stringify({ type: 'ack', ack_id: msg.msg_id ?? null, ts: now }));
-      if (['hello', 'telemetry', 'event'].includes(msg.type)) broadcast();
+      // ack 먼저
+      if (msg.msg_id) {
+        ws.send(JSON.stringify({ type: 'ack', ack_id: msg.msg_id, ts: now }));
+      }
+
+      if (deviceType === 'bus') {
+        const p = msg.payload?.position || msg.position;
+        if (p?.lat && p?.lon) {
+          const meta = clients.get(devId)?.meta || {};
+          activeBuses.set(devId, {
+            lat: p.lat,
+            lon: p.lon,
+            busNumber: meta.bus_number || msg.payload?.bus_number || null,
+            vehicleNumber: meta.vehicle_number || msg.payload?.vehicle_number || null,
+            ws,
+          });
+        }
+      }
+
+      // server.cjs - setupWS 내부 ride_response 분기 안
+      if (deviceType === 'bus' && msg.type === 'ride_response') {
+        const { requestId, decision } = msg.payload || {};
+        const r = require('./models/rideRequests.cjs').rideRequests.get(requestId);
+        if (r) {
+          // 자동승인 타이머 정리
+          if (r.autoApproveTimer) { clearTimeout(r.autoApproveTimer); r.autoApproveTimer = null; }
+
+          r.status = (decision === 'accepted') ? 'ACCEPTED' : 'REJECTED';
+          require('./mobile/appWs.cjs').pushToApp(r.deviceId, {
+            type: (decision === 'accepted') ? 'ride_accepted' : 'ride_rejected',
+            requestId,
+            auto: false,
+            ts: new Date().toISOString(),
+            message: (decision === 'accepted') ? '버스가 승차 요청을 승인했습니다.' : '버스가 승차 요청을 거절했습니다.',
+          });
+        }
+        adminBroadcast({ type: 'ride_response', payload: { requestId, decision, deviceId: devId }});
+        return;
+      }
+
+
+      // ③ 공통 브로드캐스트
+      if (['hello', 'telemetry', 'event'].includes(msg.type)) {
+        broadcast();
+      }
     });
 
     ws.on('close', () => {
@@ -162,15 +186,17 @@ function setupWS(wss, deviceType) {
     });
   });
 
+
   return clients;
 }
 
-// ✅ 각 WS별로 적용
-const mobileClients = setupWS(mobileWSS, 'phone');
+// 각 WS별로 적용
+// const mobileClients = setupWS(mobileWSS, 'phone'); //그냥 디버그용 구버전
 const deviceClients = setupWS(deviceWSS, 'bus');
 const stopClients   = setupWS(stopWSS, 'stop');
 
-
+const { attachAppWS } = require('./mobile/appWs.cjs');
+attachAppWS(mobileWSS, { deviceClients, stopClients });
 
 // 수동 업그레이드 라우팅
 server.on('upgrade', (req, socket, head) => {
@@ -227,18 +253,24 @@ app.get('/api/connections', (req, res) => {
   })));
 });
 
+// ping (GET 방식 기존)
+app.get('/api/v1/ping', (req, res) => {
+  res.json({
+    success: true,
+    data: { uptimeSec: process.uptime(), version: "1.0.0" },
+    serverTime: new Date().toISOString()
+  });
+});
 
-// app.get('/api/connections', (_req, res) => {
-//   const list = [...devices.values()].map(d => ({
-//     ip: d.meta?.ip || null,
-//     id: d.meta?.id || null,
-//     busNumber: d.meta?.bus_number ?? null,
-//     vehicleNumber: d.meta?.vehicle_number ?? null,
-//     stopId: d.meta?.stop_id ?? null,
-//     lastSeen: d.lastSeen || null,
-//   }));
-//   res.json(list);
-// });
+// ping (POST 방식 추가)
+app.post('/api/v1/ping', (req, res) => {
+  res.json({
+    success: true,
+    data: { uptimeSec: process.uptime(), version: "1.0.0" },
+    serverTime: new Date().toISOString()
+  });
+});
+
 app.post('/api/command', (req, res) => {
   const { targetType, targetId, command } = req.body || {};
   const map = getClientMap(targetType);
@@ -259,7 +291,7 @@ app.post('/api/command', (req, res) => {
 
 app.post('/api/run-code', (req, res) => {
   const { targetId, language, code } = req.body || {};
-  const d = devices.get(targetId);
+  const d = deviceClients.get(targetId);
   if (!d || d.ws.readyState !== 1) return res.json({ success: false });
   d.ws.send(JSON.stringify({
     type: 'config', msg_id: `run-${Date.now()}`, ts: Date.now(),
@@ -267,7 +299,136 @@ app.post('/api/run-code', (req, res) => {
   }));
   res.json({ success: true });
 });
+
 app.get('/api/logs', (req, res) => res.json([]));
+
+
+// // ----------------------
+// // /device-ws (버스 단말기 채널)
+// // ----------------------
+// const { sendToDevice, list: listDevices } = attachDeviceWS(server, {
+//   onAdminBroadcast: (msg) => {
+//     // 관리자 콘솔에 상태 갱신
+//     if (msg.type === 'connection_update')
+//       adminBroadcast(msg);
+
+//     // 단말기에서 ride_response 수신 처리
+//     if (msg.type === 'ride_response') {
+//       const { requestId, decision } = msg.payload || {};
+//       const req = rideRequests.get(requestId);
+//       if (!req) return;
+
+//       if (decision === 'accepted') {
+//         req.status = 'ACCEPTED';
+//         pushToApp(req.deviceId, {
+//           type: 'ride_accepted',
+//           requestId,
+//           message: '버스가 승차 요청을 승인했습니다.',
+//           ts: new Date().toISOString()
+//         });
+//       } else if (decision === 'rejected') {
+//         req.status = 'REJECTED';
+//         pushToApp(req.deviceId, {
+//           type: 'ride_rejected',
+//           requestId,
+//           message: '버스가 승차 요청을 거절했습니다.',
+//           ts: new Date().toISOString()
+//         });
+//       }
+//     }
+//   }
+// });
+
+// --------------------------------------------
+//  /mobile-ws : BusOn 모바일 앱 실시간 채널
+// --------------------------------------------
+const mobileClients = new Map();          // clientId -> { ws, token, lastSeen }
+const mobileSubscriptions = new Map();    // clientId -> Set(busNumbers)
+
+// 모바일에 메시지 안전 전송
+function pushToMobile(clientId, payload) {
+  const entry = mobileClients.get(clientId);
+  if (entry && entry.ws.readyState === 1) {
+    entry.ws.send(JSON.stringify(payload));
+  }
+}
+
+// 특정 버스 구독 중인 모든 모바일에 브로드캐스트
+function broadcastToBusSubscribers(busNumber, payload) {
+  for (const [cid, subs] of mobileSubscriptions.entries()) {
+    if (subs.has(busNumber)) pushToMobile(cid, payload);
+  }
+}
+
+//  연결 핸들러
+mobileWSS.on('connection', (ws, req) => {
+  const clientId = `m-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
+  mobileClients.set(clientId, { ws, token: null, lastSeen: Date.now() });
+  mobileSubscriptions.set(clientId, new Set());
+  const fs = require('fs');
+  const devicesFile = path.join(__dirname, 'mobile', 'data', 'devices.json');
+  function loadDevices() {
+    try {
+      return JSON.parse(fs.readFileSync(devicesFile, 'utf8'));
+    } catch { return {}; }
+  }
+  console.log(`[MOBILE] connected ${clientId}`);
+
+
+  ws.on('message', (buf) => {
+    let msg;
+    try { msg = JSON.parse(buf.toString()); } catch { return; }
+    const now = Date.now();
+
+    // 1 인증
+    if (msg.type === 'auth') {
+      const devices = loadDevices();
+      const valid = Object.values(devices).some(d => d.token === msg.token);
+
+      if (!valid) {
+        ws.send(JSON.stringify({ type: 'auth_ack', ok: false, reason: 'invalid_token' }));
+        ws.close();
+        console.log(`[MOBILE] auth failed`);
+        return;
+      }
+
+      mobileClients.get(clientId).token = msg.token;
+      ws.send(JSON.stringify({ type: 'auth_ack', ok: true, ts: now }));
+      console.log(`[MOBILE] ${clientId} authenticated`);
+      return;
+    }
+
+    // 2 구독 요청
+    if (msg.type === 'subscribe' && msg.busNumber) {
+      const subs = mobileSubscriptions.get(clientId);
+      subs.add(msg.busNumber);
+      ws.send(JSON.stringify({ type: 'subscribed', busNumber: msg.busNumber, ts: now }));
+      console.log(`[MOBILE] ${clientId} subscribed bus ${msg.busNumber}`);
+      return;
+    }
+
+    // 3 구독 해제
+    if (msg.type === 'unsubscribe' && msg.busNumber) {
+      const subs = mobileSubscriptions.get(clientId);
+      subs.delete(msg.busNumber);
+      ws.send(JSON.stringify({ type: 'unsubscribed', busNumber: msg.busNumber, ts: now }));
+      return;
+    }
+
+    // 4 ping/pong 처리
+    if (msg.type === 'pong') {
+      mobileClients.get(clientId).lastSeen = now;
+      return;
+    }
+  });
+
+  ws.on('close', () => {
+    mobileClients.delete(clientId);
+    mobileSubscriptions.delete(clientId);
+    console.log(`[MOBILE] disconnected ${clientId}`);
+  });
+});
+
 
 server.listen(PORT, () => {
   console.log(`HTTP server on http://localhost:${PORT}`);

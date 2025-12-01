@@ -44,11 +44,26 @@ function attachDeviceWS(server, { onAdminBroadcast } = {}) {
 
       if (msg.msg_id) safeSend(ws, { type:'ack', ack_id: msg.msg_id, ts: now });
 
+
+
+
       if (['hello','telemetry','event'].includes(msg.type)) {
         broadcastAdminUpdate();
         onAdminBroadcast?.({ type:'log', line:`[${devId}] ${msg.type} ${msg.msg_id ?? ''}` });
       }
     });
+
+    if (msg.type === 'ride_response') {
+      // 단말기에서 승인/거절 신호 보냄
+      onAdminBroadcast?.({
+        type: 'ride_response',
+        payload: msg.payload,
+      });
+
+      // ack 보내주기
+      if (msg.msg_id) safeSend(ws, { type: 'ack', ack_id: msg.msg_id, ts: now });
+      return;
+    }
 
     ws.on('close', () => {
       if (devId) devices.delete(devId);
@@ -67,5 +82,8 @@ function attachDeviceWS(server, { onAdminBroadcast } = {}) {
     list
   };
 }
+
+
+
 
 module.exports = { attachDeviceWS };
