@@ -179,7 +179,7 @@ function hookButtons() {
 
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsURL = `${proto}//${location.host}/admin-ws`; //  서버와 동일 경로
+  const wsURL = `${proto}//${location.host}/admin-ws`; // ✅ 서버와 동일 경로
   const ws = new WebSocket(wsURL);
 
   ws.addEventListener('open', () => {

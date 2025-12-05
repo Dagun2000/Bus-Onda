@@ -48,7 +48,7 @@ export function attachDeviceWS(server, { onAdminBroadcast }) {
       if (d) {
         d.lastSeen = now;
         d.meta = { ...d.meta, ip: msg.device?.ip, bus_number: msg.payload?.bus_number ?? d.meta?.bus_number,
-                   vehicle_number: msg.payload?.vehicle_number ?? d.meta?.vehicle_number };
+          vehicle_number: msg.payload?.vehicle_number ?? d.meta?.vehicle_number };
       }
 
       // ACK
