@@ -63,7 +63,7 @@ function attachDeviceWS(server, { onAdminBroadcast } = {}) {
           ...d.meta,
           ip: msg.device?.ip || ip,
 
-          // ✅ 여기 추가 — device_type을 저장
+          //  여기 추가 — device_type을 저장
           device_type: msg.device?.device_type ?? d.meta?.device_type,
 
           // 기존 필드 유지
