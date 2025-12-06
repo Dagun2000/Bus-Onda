@@ -14,17 +14,17 @@ function attachDeviceWS(server, { onAdminBroadcast } = {}) {
   // 타입별 목록 생성
   function list(deviceType = null) {
     return [...devices.values()]
-      .filter(d => !deviceType || d.meta?.device_type === deviceType)
-      .map(d => ({
-        ip: d.meta?.ip,
-        id: d.meta?.id,
-        busNumber: d.meta?.bus_number ?? null,
-        vehicleNumber: d.meta?.vehicle_number ?? null,
-        stopId: d.meta?.stop_id ?? null,
-        lat: d.meta?.lat ?? null,
-        lon: d.meta?.lon ?? null,
-        lastSeen: d.lastSeen
-      }));
+        .filter(d => !deviceType || d.meta?.device_type === deviceType)
+        .map(d => ({
+          ip: d.meta?.ip,
+          id: d.meta?.id,
+          busNumber: d.meta?.bus_number ?? null,
+          vehicleNumber: d.meta?.vehicle_number ?? null,
+          stopId: d.meta?.stop_id ?? null,
+          lat: d.meta?.lat ?? null,
+          lon: d.meta?.lon ?? null,
+          lastSeen: d.lastSeen
+        }));
   }
 
   function broadcastAdminUpdate() {
@@ -82,8 +82,8 @@ function attachDeviceWS(server, { onAdminBroadcast } = {}) {
         for (const req of listRequests()) {
           if (req.busNumber === d.meta.bus_number && req.userLocation) {
             const dist = haversine(
-              d.meta.lat, d.meta.lon,
-              req.userLocation.lat, req.userLocation.lon
+                d.meta.lat, d.meta.lon,
+                req.userLocation.lat, req.userLocation.lon
             );
             onAdminBroadcast?.({
               type: 'distance_update',

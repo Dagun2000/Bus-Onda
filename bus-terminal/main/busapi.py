@@ -20,6 +20,7 @@ class BusAPI(threading.Thread):
         self.stop_flag   = threading.Event()
         self.ws          = None
         self.rtt_ms      = None
+        self.current_stop_name = None
         self.last_send   = 0
         self.listeners   = {}             # event:callback
         self.connected   = False
@@ -27,9 +28,14 @@ class BusAPI(threading.Thread):
     # -------------------- 유틸 --------------------
     def local_ip(self):
         try:
-            return socket.gethostbyname(socket.gethostname())
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))  # 외부로 나갈 수 있는 인터페이스 찾기
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
         except Exception:
             return "0.0.0.0"
+
 
     def on(self, event, callback):
         """서버→장치 명령 핸들러 등록"""
@@ -104,7 +110,7 @@ class BusAPI(threading.Thread):
         print("[BusAPI] RAW 수신됨:", obj)
         t = obj.get("type")
 
-        # 1️⃣ info 타입도 명령으로 간주
+        # info / command / event → 공통 명령 처리
         if t in ("command", "event", "info"):
             payload = obj.get("payload", {})
             cmd = obj.get("cmd") or payload.get("command")
@@ -112,9 +118,24 @@ class BusAPI(threading.Thread):
             self.emit(cmd, payload)
             return
 
-        # 2️⃣ ack 처리
+        # ack 처리
         if t == "ack" and "ts" in obj:
             self.rtt_ms = int((time.time() * 1000) - obj["ts"])
+            return
+
+        # 승차 요청 (ride_request)
+        if t == "ride_request":
+            payload = obj.get("payload", {})
+            self.emit("ride_request", payload)
+            return
+
+        # 하차 요청 (alight_request)
+        if t == "alight_request":
+            payload = obj.get("payload", {})
+            self.emit("drop_request", payload)   # drop_request로 통일
+            return
+
+
 
 
     # -------------------- 스레드 실행 --------------------
