@@ -163,17 +163,7 @@ router.post('/telemetry', (req, res) => {
 // POST /api/v1/ride/request
 // ======================
 //
-// Body:
-// {
-//   "deviceId": "android-001",
-//   "lineNo": "7016",
-//   "direction": "up",
-//   "plateNumber": "서울70가1234",
-//   "stopNo": "115000123",
-//   "userLocation": { "lat": 37.5665, "lon": 126.9780 }
-// }
-//
-// mobile/appApi.cjs 안
+
 router.post('/ride/request', (req, res) => {
     const {
         deviceId,
@@ -181,6 +171,7 @@ router.post('/ride/request', (req, res) => {
         lineName,      // 새 명세
         plateNumber,   // 선택값
         stopNo,
+        stopName,
         direction,
         userLocation,
     } = req.body || {};
@@ -198,13 +189,16 @@ router.post('/ride/request', (req, res) => {
 
 
 
+    const safeStopName = stopName || stopNo;
+
     const request = createRideRequest({
-        requestId: `req-${Date.now()}`,   // 내부에서 만들고 있을 수도 있음
+        requestId: `req-${Date.now()}`,
         deviceId,
         lineNo: effectiveLine,
-        busNumber: effectiveLine,         // activeBuses 매칭용
-        plateNumber: plateNumber ?? null, // 그냥 메타데이터로 저장
+        busNumber: effectiveLine,
+        plateNumber: plateNumber ?? null,
         stopNo,
+        stopName,
         direction,
         userLocation,
     });
@@ -212,35 +206,87 @@ router.post('/ride/request', (req, res) => {
 
 
 
+
     rideRequests.set(request.requestId, request);
 
-    // ---- 휴대단말 통계 갱신 ----
+    // 여기서부터: 찾는 버스가 없으면, 개발 단말기인 라즈베리파이(1)로 ride_request 전송
     try {
-        const { phoneClients } = require('../server.cjs');
-        const phone = phoneClients.get(deviceId);
-        if (phone) {
-            phone.requestBus = effectiveLine;
-            phone.boardCount = (phone.boardCount || 0) + 1;
-            phone.lastSeen = Date.now();
+        const { deviceClients } = require('../server.cjs');
+        const { haversine } = require('../utils/geo.cjs');
+
+        let targetDevId = null;
+        let targetWs = null;
+        let minDist = Infinity;
+
+        // 1) 같은 노선/차량번호인 버스 먼저 찾기
+        for (const [devId, d] of deviceClients.entries()) {
+            const meta = d.meta || {};
+            const busNo   = meta.bus_number;
+            const vehNo   = meta.vehicle_number;
+
+            const sameLine =
+                (busNo && busNo === effectiveLine) ||
+                (plateNumber && vehNo && vehNo === plateNumber);
+
+            if (!sameLine) continue;
+
+            // 위치가 있으면 가장 가까운 버스 선택
+            if (meta.lat != null && meta.lon != null &&
+                userLocation?.lat && userLocation?.lon) {
+                const dist = haversine(meta.lat, meta.lon, userLocation.lat, userLocation.lon);
+                if (dist < minDist) {
+                    minDist = dist;
+                    targetDevId = devId;
+                    targetWs = d.ws;
+                }
+            } else if (!targetDevId) {
+                // 위치 없으면 일단 첫 번째 한 대라도 선택
+                targetDevId = devId;
+                targetWs = d.ws;
+            }
+        }
+
+        // 2) 버스를 못 찾으면 라즈베리파이(디바이스 ID = '1')로 fallback
+        if (!targetDevId) {
+            targetDevId = '1';
+            const d = deviceClients.get(targetDevId);
+            if (d) targetWs = d.ws;
+        }
+
+        if (targetWs && targetWs.readyState === 1) {
+            targetWs.send(JSON.stringify({
+                type: 'ride_request',
+                msg_id: request.requestId,
+                payload: {
+                    requestId: request.requestId,
+                    fromDeviceId: deviceId,           // 이 요청을 보낸 휴대폰
+                    lineName: effectiveLine,
+                    plateNumber: plateNumber ?? null,
+                    stopNo,
+                    stopName,                 // 지금은 stopNo가 곧 정류장 이름/표시라고 보고 같이 보냄
+                    direction,
+                    userLocation,
+                },
+            }));
+            console.log('[ride/request] sent to device', targetDevId);
+        } else {
+            console.log('[ride/request] no bus or raspi(1) connected, stored only', request.requestId);
         }
     } catch (e) {
-        console.error('[ride/request] phoneClients update error:', e);
+        console.error('[ride/request] send to bus/raspi error:', e);
     }
 
+    // ---- 클라이언트(휴대폰)에는 기존대로 응답 ----
     return res.json({
         success: true,
         data: {
             requestId: request.requestId,
-            status: request.status
+            status: request.status,
         },
-        serverTime: new Date().toISOString()
-
-
-
-
+        serverTime: new Date().toISOString(),
     });
-
 });
+
 
 
 // ======================
@@ -359,32 +405,54 @@ router.post('/ride/alight', (req, res) => {
     }
 
     // -------------------------------
-    // 버스에게 보내는 부분 — 실패해도 무시
+    // 버스 또는 라즈베리파이에 하차 요청 전송
     // -------------------------------
     try {
-        const busKey = lineName; // lineName이 busNumber 역할
+        const { deviceClients } = require('../server.cjs');
 
-        const payload = {
-            type: 'command',
-            cmd: 'drop_request',
-            msg_id: uuidv4(),
-            ts: Date.now(),
-            payload: {
-                stopNo,
-                plateNumber: plateNumber ?? null,
-                position
+        let targetDevId = null;
+        let targetWs = null;
+
+        // 1) lineName과 일치하는 버스 찾기
+        for (const [devId, d] of deviceClients.entries()) {
+            const meta = d.meta || {};
+            if (meta.bus_number && meta.bus_number === lineName) {
+                targetDevId = devId;
+                targetWs = d.ws;
+                break;
             }
-        };
-
-        const ok = pushToDevice(busKey, payload);
-
-        if (!ok) {
-            console.log(`[ALIGHT] WARNING: Bus '${busKey}' not connected`);
-        } else {
-            console.log(`[ALIGHT] Sent drop_request to '${busKey}'`);
         }
+
+        // 2) 버스가 없으면 라즈베리파이 ID = '1'
+        if (!targetDevId) {
+            const raspi = deviceClients.get('1');
+            if (raspi) {
+                targetDevId = '1';
+                targetWs = raspi.ws;
+            }
+        }
+
+        // 3) 전송 (없으면 로그만 남기고 무시)
+        if (targetWs && targetWs.readyState === 1) {
+            targetWs.send(JSON.stringify({
+                type: 'alight_request',
+                msg_id: uuidv4(),
+                ts: Date.now(),
+                payload: {
+                    deviceId,
+                    lineName,
+                    plateNumber: plateNumber ?? null,
+                    stopNo,              // 정류장 번호/이름
+                    stopName: stopNo,    // 동일하게 전달 (앱에서는 문자열을 정류장이름으로 보고 있음)
+                    position
+                }
+            }));
+            console.log(`[ALIGHT] Sent alight_request to '${targetDevId}'`);
+        } else {
+            console.log(`[ALIGHT] No bus or raspi connected for line '${lineName}'`);
+        }
+
     } catch (e) {
-        // 내부 오류라도 앱에게는 영향 주지 않음
         console.error('[ALIGHT] internal send error:', e);
     }
 

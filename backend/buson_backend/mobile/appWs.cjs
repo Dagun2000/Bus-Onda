@@ -122,6 +122,7 @@ function attachAppWS(wss /*, deps */) {
 
             // 2) 근접 알림 (< 50m)
             if (distance_m < 50 && !req.flags?.nearSent) {
+                console.log(`[AppWS] bus_nearby → ${deviceId}, dist=${distance_m}`);
                 ws.send(JSON.stringify({
                     type: 'bus_nearby',
                     message: '버스가 50m 이내 접근 중입니다.',
@@ -133,6 +134,7 @@ function attachAppWS(wss /*, deps */) {
 
             // 3) 도착 알림 (< 10m)
             if (distance_m < 10 && !req.flags?.arrivedSent) {
+                console.log(`[AppWS] bus_arrived → ${deviceId}, dist=${distance_m}`);
                 ws.send(JSON.stringify({
                     type: 'bus_arrived',
                     message: '버스가 정류장에 도착했습니다.',
@@ -141,6 +143,7 @@ function attachAppWS(wss /*, deps */) {
                 }));
                 req.flags = { ...(req.flags || {}), arrivedSent: true };
             }
+
 
             // 움직임 기반 request_confirmed 같은 고급 플래그는 그대로 유지
             const prev = req.flags?.prevUserPos;

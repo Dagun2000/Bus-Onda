@@ -7,6 +7,10 @@ import time, json, os, socket, threading, random
 from datetime import datetime, timezone, timedelta
 from busapi import BusAPI
 from lcdsystem import device, touch, draw_status, FONT_BIG, FONT_MED, FONT_SMALL, FONT_MONO
+from soundsys import SoundSystem
+SOUND = SoundSystem()
+from beepSys import BeepSys
+BEEP = BeepSys()
 
 # ====== 외부 모듈 ======
 try:
@@ -43,7 +47,8 @@ FONT_MONO  = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothic.ttf
 BUTTON_PIN = 17
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
+DOOR_PIN = 27 
+GPIO.setup(DOOR_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 
 UI_BG = "black"
@@ -89,8 +94,15 @@ class RingLog:
     def lines(self):
         with self.lock:
             return list(reversed(self.buf))
+        
+def on_ride_request(d):
+    api.status = "ride_pending"        # ← self가 아니라 api
+    api.current_stop_name = d.get("stopName") or d.get("stopNo")
+    LOG.add(f"승차 요청 수신: {api.current_stop_name}")
+    BEEP.alert_ride_request()
 
-LOG = RingLog(cap=8)
+LOG = RingLog()
+
 
 # ====== WS 클라이언트 스레드 ======
 class WSClient(threading.Thread):
@@ -102,12 +114,26 @@ class WSClient(threading.Thread):
         self.rtt_ms = None
         self.stop_flag = threading.Event()
         self.ws = None
-        self.api = None  #  BusAPI 인스턴스를 외부에서도 접근 가능하게 저장
+        self.api = None  # BusAPI 인스턴스를 외부에서도 접근 가능하게 저장
 
+    
     def run(self):
         import websocket, json
         last_send = 0
         send_interval = 0.5  # 500ms마다 전송
+
+        def on_ride_request(d):
+            api.status = "ride_pending"        # ← self가 아니라 api
+            api.current_stop_name = d.get("stopName") or d.get("stopNo")
+            LOG.add(f"승차 요청 수신: {api.current_stop_name}")
+            BEEP.alert_ride_request()
+
+        def on_drop_request(d):
+            api.status = "drop_pending"
+            api.current_stop_name = d.get("stopName") or d.get("stopNo")
+            LOG.add(f"하차 요청: {api.current_stop_name}")
+            BEEP.alert_drop_request()
+
 
         while not self.stop_flag.is_set():
             cfg = load_conf()
@@ -116,7 +142,7 @@ class WSClient(threading.Thread):
             busno = (cfg.get("bus_no") or None)
             vehno = (cfg.get("vehicle_no") or None)
 
-            #  BusAPI 인스턴스 생성 및 보관
+            # BusAPI 인스턴스 생성 및 보관
             self.api = BusAPI(
                 device_id=cfg["device_id"],
                 bus_no=cfg["bus_no"],
@@ -126,31 +152,36 @@ class WSClient(threading.Thread):
             )
             api = self.api  # alias
 
-            #  상태 기본값 보장
+            # 상태 기본값 보장
             self.api.status = "idle"
 
-            #  서버 명령 이벤트 등록
-            self.api.on("ride_request", lambda d: (
-                setattr(self.api, "status", "ride_pending"),
-                LOG.add("시각장애인 승차 요청 수신")
-            ))
-
+            # 서버 명령 이벤트 등록
+            self.api.on("ride_request", on_ride_request)
+            self.api.on("drop_request", on_drop_request)
+            
+            '''
             self.api.on("drop_request", lambda d: (
                 setattr(self.api, "status", "drop_pending"),
-                LOG.add("시각장애인 하차 요청 수신")
+                LOG.add("시각장애인 하차 요청 수신"),
+                BEEP.alert_drop_request()
             ))
+            '''
 
+            
             self.api.on("cancel_request", lambda d: (
                 setattr(self.api, "status", "idle"),
-                LOG.add("요청 취소 수신 (대기 상태로 전환)")
+                LOG.add("요청 취소 수신 (대기 상태로 전환)"),
+                BEEP.stop()
             ))
 
             self.api.on("reset", lambda _: (
                 setattr(self.api, "status", "resetting"),
-                LOG.add("강제 리셋 명령 수신 — 상태 초기화 중")
+                LOG.add("강제 리셋 명령 수신 — 상태 초기화 중"),
+                BEEP.stop()
+
             ))
 
-            #  BusAPI 스레드 시작
+            # BusAPI 스레드 시작
             self.api.start()
 
             # IP / ID 확인
@@ -170,7 +201,7 @@ class WSClient(threading.Thread):
                 self.last_err = ""
                 LOG.add("WS 연결됨")
 
-                #  hello 패킷에 device_type 추가
+                # hello 패킷에 device_type 추가
                 '''
                 hello = {
                     "type": "hello",
@@ -194,7 +225,7 @@ class WSClient(threading.Thread):
                 while not self.stop_flag.is_set():
                     now = time.time()
                     '''
-                    #  주기적 telemetry 전송
+                    # ✅ 주기적 telemetry 전송
                     if now - last_send >= send_interval:
                         msg_id = f"t-{int(now*1000)}-{random.randint(0,999)}"
                         telem = {
@@ -206,14 +237,14 @@ class WSClient(threading.Thread):
                                 "ip": local_ip(),
                                 "device_type": self.device_type
                             },
-                            "payload": {"status": self.api.status}  #  현재 상태 포함
+                            "payload": {"status": self.api.status}  # ✅ 현재 상태 포함
                         }
                         self.ws.send(json.dumps(telem))
                         last_send = now
                         pending_ack = msg_id
                         sent_ts = now
                 '''
-                    #  수신 처리
+                    # 수신 처리
                     try:
                         raw = self.ws.recv()
                         if not raw:
@@ -351,41 +382,61 @@ def draw_dashboard(wscli: WSClient, gps: GPSPoller, api=None):
         if py < box_y0 + 2:
             break
 
+
+
     # ------------------------------
     # 하단 상태 (버스 단말 상태 표시)
     # ------------------------------
-    draw.rectangle((0, 160, 320, 240), fill="white")
-
     status_text = "대기 중"
+    stop_line = ""         # ← 정류장 이름용
     color_fg = "black"
     color_bg = "white"
 
     if api:
         st = getattr(api, "status", "idle")
+        stop_name = getattr(api, "current_stop_name", None)
+
         if st == "idle":
             status_text = "요청 없음"
+
         elif st == "ride_pending":
             status_text = "시각장애인 승차 요청"
             color_fg = "red" if blink_state else "white"
             color_bg = "white" if blink_state else "red"
+            if stop_name:
+                stop_line = stop_name
+
         elif st == "ride_active":
             status_text = "탑승 중"
             color_fg = "white"
             color_bg = "green"
+            if stop_name:
+                stop_line = stop_name
+
         elif st == "drop_pending":
             status_text = "하차 요청"
             color_fg = "yellow" if blink_state else "black"
             color_bg = "black" if blink_state else "yellow"
+            if stop_name:
+                stop_line = stop_name
+
         elif st == "resetting":
             status_text = "상태 초기화 중…"
             color_fg = "white"
             color_bg = "#444"
 
+    # 실제 그리기
     draw.rectangle((0, 160, 320, 240), fill=color_bg)
-    #tw, th = draw.textsize(status_text, font=FONT_BIG)
     bbox = draw.textbbox((0, 0), status_text, font=FONT_BIG)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    draw.text(((320 - tw)//2, 180), status_text, font=FONT_BIG, fill=color_fg)
+    draw.text(((320 - tw)//2, 170), status_text, font=FONT_BIG, fill=color_fg)
+
+    # 정류장 이름 한 줄 더
+    if stop_line:
+        bbox2 = draw.textbbox((0, 0), stop_line, font=FONT_SMALL)
+        tw2, th2 = bbox2[2] - bbox2[0], bbox2[3] - bbox2[1]
+        draw.text(((320 - tw2)//2, 170 + th + 6), stop_line, font=FONT_SMALL, fill=color_fg)
+
 
     # 하단 시각
     now_str = datetime.now(KST).strftime("%H:%M:%S")
@@ -408,33 +459,53 @@ def main():
     # 백그라운드
     wscli = WSClient(); wscli.start()
     gps = GPSPoller(); gps.start()
+    last_door = GPIO.input(DOOR_PIN)  # 초기값
+    door_state = "close"
 
     try:
         while True:
-            # 버튼 엣지 검출 (HIGH->LOW)
             now = time.time()
             val = GPIO.input(BUTTON_PIN)
+            door_val = GPIO.input(DOOR_PIN)
+
+            # ----- 문 열림 감지 -----
+            if door_val != last_door:
+                last_door = door_val
+                if door_val == GPIO.LOW:
+                    door_state = "open"
+                    LOG.add("문 열림 감지됨")
+                    # BusAPI에 door 상태 송신
+                    if wscli.api and wscli.api.connected:
+                        wscli.api.send({
+                            "type": "event",
+                            "event": "door",
+                            "payload": {"state": "open"}
+                        })
+                    # 버스 번호 음성 안내
+                    cfg = load_conf()
+                    bus_no = cfg.get("bus_no", "미등록")
+                    SOUND.announce_bus(bus_no)
+                else:
+                    door_state = "close"
+                    LOG.add("문 닫힘 감지됨")
+                    if wscli.api and wscli.api.connected:
+                        wscli.api.send({
+                            "type": "event",
+                            "event": "door",
+                            "payload": {"state": "close"}
+                        })
+
+            # ----- 기존 버튼 -----
             if val != _last_btn:
-                # 변화 감지
                 if val == GPIO.LOW and (now - _last_btn_ts) > BTN_DEBOUNCE:
                     is_disabled_mode = not is_disabled_mode
                 _last_btn = val
                 _last_btn_ts = now
 
-            # 터치 [X] 길게 눌러 종료
-            if touch.touched():
-                pos = touch.read()
-                if pos:
-                    px, py = pos
-                    if point_in_exit(px, py):
-                        t0 = time.time()
-                        while touch.touched():
-                            if time.time() - t0 > 0.8:
-                                raise KeyboardInterrupt
-                            time.sleep(0.02)
-
+            # ----- UI 업데이트 -----
             draw_dashboard(wscli, gps, wscli.api)
             time.sleep(0.05)
+
 
     except KeyboardInterrupt:
         pass
