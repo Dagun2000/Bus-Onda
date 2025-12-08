@@ -1,8 +1,8 @@
 package com.app.busiscoming.presentation.screens.busrecognitionresult
 
 import android.content.Context
-import android.media.AudioManager // 🌟 추가
-import android.media.ToneGenerator // 🌟 추가
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -49,9 +49,9 @@ import com.app.busiscoming.camera.CameraConfig
 import com.app.busiscoming.camera.CameraModule
 import com.app.busiscoming.detection.BusNumberDetectionPipeline
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job // 🌟 추가
-import kotlinx.coroutines.delay // 🌟 추가
-import kotlinx.coroutines.isActive // 🌟 추가
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -65,15 +65,24 @@ fun BusRecognitionResultScreen(
     isFindSeats: Boolean = false,
     viewModel: BusRecognitionResultViewModel = hiltViewModel()
 ) {
+    // 🌟 [수정] 테스트 모드 설정 변수 추가
+    val isTestMode = true // true면 하드코딩된 번호 사용, false면 넘어온 busNumber 사용
+    val testBusNumber = "5511" // 테스트하고 싶은 버스 번호 (하드코딩)
+
+    // 🌟 [수정] 실제 사용할 버스 번호 결정 로직
+    val targetBusNumber = if (isTestMode) testBusNumber else busNumber
+
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(busNumber) {
-        viewModel.initialize(busNumber)
+    // 🌟 [수정] 결정된 targetBusNumber로 초기화 수행
+    LaunchedEffect(targetBusNumber) {
+        viewModel.initialize(targetBusNumber)
     }
 
     BusRecognitionResultScreenContent(
-        targetBusNumber = uiState.busNumber,
+        targetBusNumber = uiState.busNumber, // ViewModel이 초기화되면 이 값도 targetBusNumber가 됨
         onDoubleTap = {
+            // 네비게이션 시에도 현재 인식 중인 번호(uiState.busNumber)를 넘김
             if (isFindSeats) {
                 navController.navigate(
                     Screen.EmptySeat.createRoute(uiState.busNumber)
@@ -95,6 +104,7 @@ fun BusRecognitionResultScreenContent(
     targetBusNumber: String?,
     onDoubleTap: () -> Unit
 ) {
+    // targetBusNumber가 "150" 등으로 들어오면 여기서 숫자만 필터링하여 감지 로직에 사용됨
     val cleanTarget = remember(targetBusNumber) {
         targetBusNumber?.filter { it.isDigit() }
     }
@@ -112,23 +122,17 @@ fun BusRecognitionResultScreenContent(
         }
     }
 
-    // 🌟 [추가] 소리 관련 설정
-    // ToneGenerator: 삐 소리를 내는 가벼운 객체 (알람 볼륨 사용)
+    // 소리 관련 설정
     val toneGenerator = remember { ToneGenerator(AudioManager.STREAM_ALARM, 100) }
-
-    // 소리 재생 상태
     var isBeeping by remember { mutableStateOf(false) }
-
-    // 3초 카운트다운을 관리할 Job (리셋을 위해 변수로 저장)
     var stopSoundJob by remember { mutableStateOf<Job?>(null) }
 
-    // 🌟 [추가] 소리 재생 로직 (isBeeping이 true인 동안 반복)
+    // 소리 재생 로직
     LaunchedEffect(isBeeping) {
         if (isBeeping) {
             while (isActive) {
-                // TONE_CDMA_PIP: 짧은 삐 소리 (150ms 지속)
                 toneGenerator.startTone(ToneGenerator.TONE_CDMA_PIP, 150)
-                delay(500) // 0.5초 간격으로 반복 (삐... 삐... 삐...)
+                delay(500)
             }
         }
     }
@@ -138,7 +142,12 @@ fun BusRecognitionResultScreenContent(
     val isProcessing = remember { AtomicBoolean(false) }
 
     // 3. 버튼 텍스트 및 포커스
-    val buttonText = "버스에 탑승완료 하시면 화면을 두번 탭해주세요"
+    // 테스트 모드인지 알 수 있게 텍스트에 표시해주는 것도 좋음 (선택사항)
+    val buttonText = if (targetBusNumber != null)
+        "현재 $targetBusNumber 번 버스를 찾고 있습니다.\n탑승완료 하시면 화면을 두번 탭해주세요"
+    else
+        "버스 번호를 확인하는 중입니다..."
+
     val buttonFocusRequester = remember { FocusRequester() }
 
     // 4. 모델 로딩
@@ -146,12 +155,10 @@ fun BusRecognitionResultScreenContent(
         pipeline = BusNumberDetectionPipeline(context)
     }
 
-    // 5. 메모리 해제 (화면 꺼질 때)
+    // 5. 메모리 해제
     DisposableEffect(Unit) {
         onDispose {
             pipeline?.release()
-
-            // 🌟 [추가] 화면 나갈 때 소리 즉시 끄기 및 자원 해제
             isBeeping = false
             toneGenerator.release()
         }
@@ -202,18 +209,13 @@ fun BusRecognitionResultScreenContent(
                                         VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE)
                                     )
 
-                                    // 🌟 [추가] 소리 타이머 리셋 로직
+                                    // 소리 타이머 리셋 로직
                                     launch(Dispatchers.Main) {
-                                        // 1. 기존에 돌던 '정지 타이머'가 있다면 취소 (리셋 효과)
                                         stopSoundJob?.cancel()
-
-                                        // 2. 소리 켜기
                                         isBeeping = true
-
-                                        // 3. 새로운 3초 타이머 시작
                                         stopSoundJob = launch {
-                                            delay(600) // 3초 대기
-                                            isBeeping = false // 소리 끄기
+                                            delay(600)
+                                            isBeeping = false
                                         }
                                     }
                                 }
