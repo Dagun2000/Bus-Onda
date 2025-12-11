@@ -51,7 +51,7 @@
 
 이 프로젝트를 실행하기 위해서는 **TMAP API Key**가 필요합니다.
 
-Raspberry Pi 가 미적용된 버전은 android-app 하위 디렉토리에 있습니다.
+Raspberry Pi 없이 이용을 하기 위해서는, 프로젝트 디렉토리 내  BusStopArrivalScreen.kt, DisembarkationNotificationScreen.kt 내의 isDebugMode를 true로 바꾸고 빌드해주세요.
 
 ### 1. 레포지토리 클론 (Clone Repository)
 ```bash
