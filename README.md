@@ -47,12 +47,6 @@
 ### 💾 Dataset
 * **Custom Dataset**: 직접 수집(Web Crawling)한 한국 버스 환경, 정류장, 좌석 이미지 데이터
 
-## 📸 스크린샷 및 시연 (Demo)
-| 메인 화면 | 경로 탐색 | 정류장 인식 | 버스 인식 |
-|:---:|:---:|:---:|:---:|
-| ![Img1](docs/img/main.png) | ![Img2](docs/img/nav.png) | ![Img3](docs/img/stop.png) | ![Img4](docs/img/bus.png) |
-*(이미지 파일은 `docs/img` 폴더에 위치시켜 주세요)*
-
 ## 🚀 설치 및 실행 (Installation)
 
 이 프로젝트를 실행하기 위해서는 **TMAP API Key**가 필요합니다.
