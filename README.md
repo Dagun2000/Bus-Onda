@@ -51,6 +51,8 @@
 
 이 프로젝트를 실행하기 위해서는 **TMAP API Key**가 필요합니다.
 
+Raspberry Pi 가 미적용된 버전은 android-app 하위 디렉토리에 있습니다.
+
 ### 1. 레포지토리 클론 (Clone Repository)
 ```bash
 git clone [https://github.com/username/bus-onda.git](https://github.com/username/bus-onda.git)
