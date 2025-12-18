@@ -1,6 +1,0 @@
-path: C:/Users/ben61/Bus-Onda/ai-vision/dataset/processed
-train: images/train
-val: images/val
-
-nc: 1
-names: ['bus_number']
