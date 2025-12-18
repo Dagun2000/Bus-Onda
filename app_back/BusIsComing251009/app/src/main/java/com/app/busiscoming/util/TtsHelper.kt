@@ -64,7 +64,7 @@ class TtsHelper @Inject constructor(
      */
     suspend fun speakDestinationConfirmed(text: String) {
         delay(6000) // 3초 지연 - TalkBack이 화면 요소를 읽을 시간 확보
-        speak("목적지로 ${text}가 입력되었습니다. 틀리면 화면을 더블 탭 후 목적지를 다시 말해주세요. 맞으면 화면을 오른쪽으로 쓸어서 경로 안내 시작 버튼을 찾은 뒤 화면을 두 번 탭해주세요.")
+        speak("목적지로 ${text}이 입력되었습니다. 틀리면 화면을 더블 탭 후 목적지를 다시 말해주세요. 맞으면 화면을 오른쪽으로 쓸어서 경로 안내 시작 버튼을 찾은 뒤 화면을 두 번 탭해주세요.")
     }
 
     fun speakRouteListIntro(count: Int) {

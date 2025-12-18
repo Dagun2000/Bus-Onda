@@ -44,13 +44,26 @@ class RouteResultViewModel @Inject constructor(
     private var busInfo: BusInfo? = null
     private var consecutiveFailures = 0
     private var webSocketStarted = false // 웹소켓 연결 여부 추적
-    
+
+    // RouteResultViewModel.kt
+
     fun setRoutes(routes: List<RouteInfo>) {
+        // 1. 이미 경로 데이터가 로드되어 있다면 중복 처리 방지
+        if (_uiState.value.routes.isNotEmpty()) return
+
         val limited = routes.sortedBy { it.transferCount }.take(5)
-        _uiState.update { it.copy(routes = limited, selectedRoute = limited.firstOrNull()) }
+        _uiState.update {
+            it.copy(
+                routes = limited,
+                // 2. 최초 1회만 첫 번째 경로를 선택함
+                selectedRoute = limited.firstOrNull()
+            )
+        }
     }
-    
+
     fun selectRoute(route: RouteInfo) {
+        // 로그를 찍어 실제 어떤 데이터가 들어오는지 확인하세요
+        android.util.Log.d("RouteResult", "경로 선택됨: ${route.firstStopName}, ${route.totalTime}")
         _uiState.update { it.copy(selectedRoute = route) }
     }
     

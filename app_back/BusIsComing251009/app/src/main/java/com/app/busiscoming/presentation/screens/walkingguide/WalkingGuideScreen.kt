@@ -25,7 +25,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.app.busiscoming.presentation.navigation.Screen
+import com.app.busiscoming.util.SelectedRouteHolder
 import com.app.busiscoming.walknavi.NavigationViewModel
+// 🌟 HomeViewModel 참조를 위해 추가
+import com.app.busiscoming.presentation.screens.home.HomeViewModel
 
 /**
  * 도보 안내 화면
@@ -40,10 +43,15 @@ fun WalkingGuideScreen(
     destLon: Float,
     viewModel: NavigationViewModel = hiltViewModel()
 ) {
+    // 🌟 HomeViewModel 인스턴스를 가져옵니다 (기존의 Home 화면 백스택 항목 이용)
+    val parentEntry = remember(navController.currentBackStackEntry) {
+        navController.getBackStackEntry(Screen.Home.route)
+    }
+    val homeViewModel: HomeViewModel = hiltViewModel(parentEntry)
+
     // '도보 이동'이라는 문자열이 오면 최종 목적지 안내로 판단
     val isFinalLeg = (busNumber == "도보 이동")
 
-    // 화면이 열리자마자 목적지 설정하고 안내 시작
     LaunchedEffect(stopName, destLat, destLon) {
         viewModel.setDestination(
             name = stopName,
@@ -59,14 +67,26 @@ fun WalkingGuideScreen(
             // 1. 네비게이션/센서 종료
             viewModel.stopAllSensors()
 
-            // 2. 상황에 따른 이동
+            // 2. 상황에 따른 처리
             if (isFinalLeg) {
-                // [CASE B] 최종 목적지 도착 완료 -> 홈 화면으로 복귀
+                // [CASE B] 최종 목적지 도착 완료
+
+                // 🌟 (1) 글로벌 경로 홀더 초기화
+                SelectedRouteHolder.clear()
+
+                // 🌟 (2) HomeViewModel의 모든 검색 데이터 초기화
+                homeViewModel.resetAllData()
+
+                // 🌟 (3) 홈 화면으로 이동하며 백스택을 전부 비웁니다 (새로 켠 것처럼)
                 navController.navigate(Screen.Home.route) {
                     popUpTo(Screen.Home.route) { inclusive = true }
                 }
             } else {
-                // [CASE A] 버스 정류장 도착 완료 -> 버스 기다리는 화면으로 이동
+                // [CASE A] 버스 정류장 도착 완료
+
+                // 다음 단계(버스 탑승)를 위해 인덱스 증가
+                SelectedRouteHolder.incrementIndex()
+
                 navController.navigate(Screen.BusStopArrival.createRoute(busNumber))
             }
         }
@@ -74,15 +94,13 @@ fun WalkingGuideScreen(
 }
 
 /**
- * 도보 안내 화면 컨텐츠
- * - 불필요한 설명(semantics) 제거함
+ * 도보 안내 화면 컨텐츠 (UI 스타일 유지)
  */
 @Composable
 fun WalkingGuideScreenContent(
     onButtonClick: () -> Unit
 ) {
     val buttonText = "ㅣ"
-
     val buttonFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
@@ -95,14 +113,13 @@ fun WalkingGuideScreenContent(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // 상단 투명 버튼
         Button(
             onClick = onButtonClick,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(80.dp)
                 .focusRequester(buttonFocusRequester)
-                .focusable(), // semantics 블록 제거 완료
+                .focusable(),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.surface,

@@ -24,15 +24,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.app.busiscoming.domain.model.PlaceInfo
 import com.app.busiscoming.presentation.components.InputField
 import com.app.busiscoming.presentation.components.PrimaryButton
 import com.app.busiscoming.presentation.navigation.Screen
-import com.app.busiscoming.ui.theme.BusIsComingTheme
 import com.app.busiscoming.util.VoiceInputHelper
 
 /**
@@ -45,7 +42,7 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // 위치 권한 요청
+    // 위치 및 권한 요청 런처
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -67,31 +64,25 @@ fun HomeScreen(
             viewModel.onVoiceRecognitionFailed()
         }
     }
-    
-    // 앱 시작 시 위치 권한 요청
+
+    // 앱 시작 시 권한 요청
     LaunchedEffect(Unit) {
         locationPermissionLauncher.launch(
             arrayOf(
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.RECORD_AUDIO ,
+                Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.CAMERA
             )
         )
     }
 
-    // 에러 메시지 표시
-    LaunchedEffect(uiState.error) {
-        uiState.error?.let {
-            // 실제로는 Snackbar 등으로 표시
-            kotlinx.coroutines.delay(2000)
-            viewModel.clearError()
-        }
-    }
-
-    // 검색 완료 시 결과 화면으로 이동
+    // 🌟 검색 완료 시 결과 화면으로 이동하는 로직
     LaunchedEffect(uiState.searchCompleted) {
         if (uiState.searchCompleted) {
+            // 🌟 [핵심] 화면이 넘어가기 직전에 TTS를 즉시 중단시킵니다.
+            viewModel.stopTts()
+
             viewModel.resetSearchCompleted()
             navController.navigate(Screen.RouteResult.route)
         }
@@ -100,7 +91,10 @@ fun HomeScreen(
     HomeScreenContent(
         uiState = uiState,
         onDestinationTextChanged = viewModel::onDestinationTextChanged,
-        onSearchClick = { viewModel.onStartClicked() },
+        onSearchClick = {
+            // 경로 안내 시작 시에도 혹시 나올 수 있는 TTS 중단 후 시작
+            viewModel.onStartClicked()
+        },
         onDestinationFieldClick = {
             voiceLauncher.launch(
                 VoiceInputHelper.buildKoreanFreeFormIntent("목적지를 말씀해주세요")
@@ -124,7 +118,6 @@ private fun HomeScreenContent(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-
     ) {
         Column(
             modifier = Modifier
@@ -132,8 +125,8 @@ private fun HomeScreenContent(
                 .padding(horizontal = 24.dp, vertical = 42.dp)
         ) {
             Spacer(modifier = Modifier.height(8.dp))
-            
-            // 입력 필드 카드
+
+            // 목적지 입력 필드 영역
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -148,7 +141,7 @@ private fun HomeScreenContent(
                     readOnly = true,
                     onClick = onDestinationFieldClick,
                     modifier = Modifier.semantics {
-                        contentDescription = ""
+                        contentDescription = "목적지 입력창입니다. 더블탭하여 음성으로 입력하세요."
                     }
                 )
             }
@@ -161,8 +154,8 @@ private fun HomeScreenContent(
                 enabled = !uiState.isLoading && uiState.isLocationReady
             )
         }
-        
-        // 우하단 설정 버튼
+
+        // 설정 버튼
         Text(
             text = "설정",
             style = MaterialTheme.typography.bodyLarge,
@@ -174,40 +167,3 @@ private fun HomeScreenContent(
         )
     }
 }
-
-@Preview(showBackground = true, showSystemUi = true)
-@Composable
-private fun HomeScreenPreview() {
-    BusIsComingTheme {
-        HomeScreenContent(
-            uiState = HomeUiState(
-                startPlace = PlaceInfo("현재 위치", 37.5665, 126.9780),
-                endPlace = null,
-                destinationText = "홍대"
-            ),
-            onDestinationTextChanged = {},
-            onSearchClick = {},
-            onDestinationFieldClick = {},
-            onSettingsClick = {}
-        )
-    }
-}
-
-@Preview(showBackground = true, showSystemUi = true)
-@Composable
-private fun HomeScreenWithDestinationPreview() {
-    BusIsComingTheme {
-        HomeScreenContent(
-            uiState = HomeUiState(
-                startPlace = PlaceInfo("현재 위치", 37.5665, 126.9780),
-                endPlace = PlaceInfo("홍대입구역", 37.5563, 126.9226),
-                destinationText = "홍대입구역"
-            ),
-            onDestinationTextChanged = {},
-            onSearchClick = {},
-            onDestinationFieldClick = {},
-            onSettingsClick = {}
-        )
-    }
-}
-

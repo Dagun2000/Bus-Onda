@@ -26,6 +26,7 @@ import com.app.busiscoming.domain.model.RouteInfo
 import com.app.busiscoming.domain.model.TransitMode
 import com.app.busiscoming.presentation.navigation.Screen
 import com.app.busiscoming.ui.theme.*
+import com.app.busiscoming.util.SelectedRouteHolder // [추가] 글로벌 홀더 임포트
 import kotlinx.coroutines.launch
 import android.widget.Toast
 
@@ -47,7 +48,6 @@ fun RouteResultScreen(
     viewModel: RouteResultViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
     // HomeViewModel에서 검색한 결과 가져오기
@@ -57,25 +57,10 @@ fun RouteResultScreen(
     val homeViewModel: com.app.busiscoming.presentation.screens.home.HomeViewModel = hiltViewModel(parentEntry)
     val homeUiState by homeViewModel.uiState.collectAsState()
 
-    // 검색된 경로를 RouteResultViewModel에 설정
+    // 검색된 경로를 ViewModel에 설정 (최초 1회)
     LaunchedEffect(homeUiState.routes) {
-        if (homeUiState.routes.isNotEmpty()) {
+        if (homeUiState.routes.isNotEmpty() && uiState.routes.isEmpty()) {
             viewModel.setRoutes(homeUiState.routes)
-        }
-    }
-
-    // 버스 근접/도착 알림 처리
-    LaunchedEffect(uiState.busNearby) {
-        if (uiState.busNearby) {
-            // 진동 및 알림음 처리 (추후 구현)
-            // TODO: 진동 및 알림음
-        }
-    }
-    
-    LaunchedEffect(uiState.busArrived) {
-        if (uiState.busArrived) {
-            // 버스 도착 알림
-            // TODO: 진동 및 알림음
         }
     }
 
@@ -87,23 +72,31 @@ fun RouteResultScreen(
         busArrived = uiState.busArrived,
         busDistance = uiState.busDistance,
         onRouteSelect = { route ->
-            // 경로 선택 시 텔레메트리 전송 시작 (승차 요청은 보내지 않음)
+            // 1. [핵심] 글로벌 변수에 전체 경로 저장 및 인덱스 0으로 초기화
+            SelectedRouteHolder.setRoute(route)
+
+            // 2. ViewModel 상태 업데이트 및 텔레메트리 준비
             viewModel.selectRoute(route)
             viewModel.startTelemetryForRoute(route)
-            
-            // WalkingGuideScreen으로 바로 이동
-            val busNumber = route.legs.firstOrNull { it.mode == TransitMode.BUS }?.routeName ?: ""
-            val stopName = route.firstStopName
-            val lat = route.firstStopLat
-            val lng = route.firstStopLon
-            
+
+            // 3. 첫 번째 버스 정보 추출 (가이드 화면 표시용)
+            val firstBusLeg = route.legs.firstOrNull { it.mode == TransitMode.BUS }
+            val busNumber = firstBusLeg?.routeName ?: ""
+
+            // 4. 다음 화면(첫 번째 정류장까지 도보 가이드)으로 이동
             navController.navigate(
-                Screen.WalkingGuide.createRoute(busNumber, stopName, lat, lng)
+                Screen.WalkingGuide.createRoute(
+                    busNumber = busNumber,
+                    stopName = route.firstStopName, // 타야 할 정류장 이름
+                    lat = route.firstStopLat,      // 타야 할 정류장 위도
+                    lng = route.firstStopLon       // 타야 할 정류장 경도
+                )
             )
         },
-        onBack = { 
+        onBack = {
             viewModel.stopTelemetry()
-            navController.navigateUp() 
+            SelectedRouteHolder.clear() // [추가] 뒤로 갈 때 데이터 초기화
+            navController.navigateUp()
         },
         onStartNavigation = { route ->
             navController.navigate(
@@ -141,7 +134,7 @@ fun RouteResultScreenContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
+                title = {
                     Text(
                         text = "경로 선택",
                         style = MaterialTheme.typography.titleLarge,
@@ -155,10 +148,7 @@ fun RouteResultScreenContent(
                             contentDescription = "뒤로 가기"
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
+                }
             )
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -169,14 +159,14 @@ fun RouteResultScreenContent(
                 .padding(paddingValues)
         ) {
             val introFocusRequester = remember { FocusRequester() }
-            val introText = remember(routes.size) {
-                "총 ${routes.size}개의 경로를 찾았습니다. 현재 제공된 경로는 최소환승순입니다. 화면을 오른쪽으로 쓸어서 원하는 경로를 선택하신 뒤 화면을 더블탭 해주세요."
-            }
+            val introText = "총 ${routes.size}개의 경로를 찾았습니다. 원하는 경로를 선택하신 뒤 더블탭 해주세요."
+
             LaunchedEffect(routes) {
                 if (routes.isNotEmpty()) {
                     introFocusRequester.requestFocus()
                 }
             }
+
             Text(
                 text = introText,
                 style = MaterialTheme.typography.bodyMedium,
@@ -186,6 +176,7 @@ fun RouteResultScreenContent(
                     .focusRequester(introFocusRequester)
                     .focusable()
             )
+
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
@@ -194,96 +185,11 @@ fun RouteResultScreenContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 itemsIndexed(routes) { index, route ->
-                    val cardModifier = Modifier
                     RouteCard(
                         route = route,
                         isSelected = selectedRoute == route,
-                        onClick = { onRouteSelect(route) },
-                        modifier = cardModifier
+                        onClick = { onRouteSelect(route) }
                     )
-                }
-            }
-            
-            // 선택된 경로의 상세 정보 및 시작 버튼
-            selectedRoute?.let { route ->
-                RouteDetailSection(
-                    route = route,
-                    onStartNavigation = { onStartNavigation(route) }
-                )
-            }
-        }
-        
-        // 텔레메트리 오류 표시
-        telemetryError?.let { error ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer
-                )
-            ) {
-                Text(
-                    text = error,
-                    modifier = Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onErrorContainer
-                )
-            }
-        }
-        
-        // 버스 근접 알림
-        if (busNearby) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        text = "버스가 곧 도착합니다",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    busDistance?.let {
-                        Text(
-                            text = "거리: ${it.toInt()}m",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-            }
-        }
-        
-        // 버스 도착 알림
-        if (busArrived) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        text = "버스 도착",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    busDistance?.let {
-                        Text(
-                            text = "거리: ${it.toInt()}m",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
                 }
             }
         }
@@ -294,35 +200,18 @@ fun RouteResultScreenContent(
 private fun RouteCard(
     route: RouteInfo,
     isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    onClick: () -> Unit
 ) {
-    val backgroundColor = if (isSelected) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.surface
-    }
-    
-    val borderColor = if (isSelected) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        Color.Transparent
-    }
-    
+    val backgroundColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+
     Card(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() },
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = backgroundColor
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isSelected) 4.dp else 2.dp
-        ),
-        border = if (isSelected) {
-            androidx.compose.foundation.BorderStroke(2.dp, borderColor)
-        } else null
+        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
     ) {
         val composedText = buildCardText(route)
         Column(
@@ -333,8 +222,7 @@ private fun RouteCard(
             Text(
                 text = "소요시간 ${formatTime(route.totalTime)}",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
@@ -342,8 +230,9 @@ private fun RouteCard(
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(modifier = Modifier.height(6.dp))
+            val busLines = route.legs.filter { it.mode != TransitMode.WALK }.mapNotNull { it.routeName }.joinToString(" ")
             Text(
-                text = "이용노선 ${route.legs.filter { it.mode != TransitMode.WALK }.mapNotNull { it.routeName }.joinToString(" ")}",
+                text = "이용노선 $busLines",
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(modifier = Modifier.height(6.dp))
@@ -355,48 +244,8 @@ private fun RouteCard(
     }
 }
 
-@Composable
-private fun RouteDetailSection(
-    route: RouteInfo,
-    onStartNavigation: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(16.dp)
-    ) {
-        // Text(
-        //     text = "총 거리 ${route.totalDistance}m, 도보 시간 ${route.totalWalkTime / 60}분, 도보 거리 ${route.totalWalkDistance}m",
-        //     style = MaterialTheme.typography.bodyMedium
-        // )
-        // Spacer(modifier = Modifier.height(12.dp))
-        // PrimaryButton(
-        //     text = "안내 시작",
-        //     onClick = onStartNavigation
-        // )
-    }
-}
-
 private fun formatTime(seconds: Int): String {
     val hours = seconds / 3600
     val minutes = (seconds % 3600) / 60
-    
-    return when {
-        hours > 0 -> "${hours}시간 ${minutes}분"
-        else -> "${minutes}분"
-    }
+    return if (hours > 0) "${hours}시간 ${minutes}분" else "${minutes}분"
 }
-
-private fun parseColor(colorString: String?): Long {
-    return try {
-        if (colorString != null && colorString.length == 6) {
-            ("FF$colorString").toLong(16)
-        } else {
-            0xFF53B332 // 기본 색상
-        }
-    } catch (e: Exception) {
-        0xFF53B332
-    }
-}
-

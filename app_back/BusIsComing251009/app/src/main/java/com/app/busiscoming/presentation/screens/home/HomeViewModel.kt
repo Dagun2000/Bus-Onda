@@ -114,7 +114,24 @@ class HomeViewModel @Inject constructor(
                 }
         }
     }
-    
+    fun stopTts() {
+        // ViewModel에서 사용하는 ttsManager의 stop() 또는 유사한 기능을 호출합니다.
+        ttsHelper.stop()
+        android.util.Log.d("HomeViewModel", "사용자 요청으로 TTS 출력을 중단합니다.")
+    }
+    fun resetAllData() {
+        // UI 상태를 초기값을 가진 새로운 객체로 교체합니다.
+        _uiState.value = HomeUiState(
+            startPlace = null,
+            endPlace = null,
+            destinationText = "",
+            isLoading = false,
+            isLocationReady = true, // 위치 권한이 이미 있다면 true 유지
+            searchCompleted = false,
+            error = null
+        )
+        android.util.Log.d("HomeViewModel", "모든 데이터가 초기화되었습니다.")
+    }
     fun searchRoutes() {
         val start = _uiState.value.startPlace
         val end = _uiState.value.endPlace
@@ -125,7 +142,7 @@ class HomeViewModel @Inject constructor(
             }
             return
         }
-        
+
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             
