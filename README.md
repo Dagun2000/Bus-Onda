@@ -81,6 +81,8 @@ app/src/main
 │   ├── data                # 데이터 계층 (Repository Impl, DataStore, Network)
 │   │   ├── datastore       # 로컬 설정 저장
 │   │   ├── remote          # API 통신 (Retrofit, WebSocket)
+│   │   ├── model           # 외부서버(API)와 주고받는 데이터 구조 정의
+│   │   ├── mapper          # 서버 데이터 모델과 앱 내부 도메인 모델간의 변환
 │   │   └── repository      # Repository 구현체
 │   ├── detection           # AI 감지 파이프라인 (버스, 정류장, 좌석, OCR 로직)
 │   ├── di                  # Hilt 의존성 주입 모듈 (NetworkModule, RepositoryModule)
