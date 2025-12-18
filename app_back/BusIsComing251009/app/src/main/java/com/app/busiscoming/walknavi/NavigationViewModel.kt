@@ -12,6 +12,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+// 🌟 BuildConfig 임포트 (자동 생성된 클래스입니다)
+import com.app.busiscoming.BuildConfig
 
 class NavigationViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -20,7 +22,8 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
     private val locationHelper = LocationHelper(application.applicationContext)
     private val compassHelper = CompassHelper(application.applicationContext)
 
-    private val APP_KEY = "Gc1ggMVc4K3p76YmOBSuY6APLbLBDDHQa0ege4VP"
+    // 🌟 [수정] 하드코딩된 키 대신 Gradle에 적힌 키를 가져옵니다.
+    private val APP_KEY = BuildConfig.TMAP_API_KEY
 
     private var waypoints = listOf<Feature>()
     private var currentTargetIndex = 0
@@ -39,7 +42,6 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
 
     private var navigationJob: Job? = null
 
-    // 목적지 설정
     fun setDestination(name: String, lat: Double, lon: Double, isFinal: Boolean = false) {
         this.destName = name
         this.destLat = lat
@@ -48,7 +50,6 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
         Log.d("NAVI_DEBUG", "목적지 설정: $destName, 최종여부: $isFinal")
     }
 
-    // 내비게이션 시작
     fun startNavigation() {
         ttsManager.speak("목적지 ${destName}까지 안내를 시작합니다.")
         compassHelper.startListening { azimuth -> currentHeading = azimuth }
@@ -105,7 +106,6 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    // 🌟 복구된 방향 보정 가이드 함수
     private fun getCorrectionGuide(targetLoc: Location, myLoc: Location): String {
         val bearingToTarget = myLoc.bearingTo(targetLoc).let { if (it < 0) it + 360 else it }
         var diff = bearingToTarget - currentHeading
@@ -136,7 +136,6 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
         val isFinal = (currentTargetIndex == waypoints.lastIndex)
         val arrivalRadius = if (isFinal) 12 else 8
 
-        // A. 목적지/경유지 도착 로직
         if (distance <= arrivalRadius) {
             if (isFinal) {
                 val finalMessage = if (isFinalDestination) {
@@ -156,15 +155,13 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
             currentTargetIndex++
             lastSpokenTime = System.currentTimeMillis()
         }
-        // B. 🌟 복구된 이동 중 피드백 로직
         else {
             if (ttsManager.isSpeaking) return
             val currentTime = System.currentTimeMillis()
 
-            if (currentTime - lastSpokenTime > 12000) { // 12초마다 체크
+            if (currentTime - lastSpokenTime > 12000) {
                 var allowCorrection = true
                 if (lastPassedLocation != null) {
-                    // 경유지를 막 지난 직후(15m 이내)에는 방향 지적을 유예 (안정성)
                     if (myLoc.distanceTo(lastPassedLocation!!) < 15) allowCorrection = false
                 }
 
