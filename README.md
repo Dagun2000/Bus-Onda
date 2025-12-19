@@ -49,7 +49,7 @@
 
 ## 🚀 설치 및 실행 (Installation)
 
-이 프로젝트를 실행하기 위해서는 **TMAP API Key**가 필요합니다.
+이 프로젝트를 실행하기 위해서는 **TMAP API Key**가 필요합니다. build.gradle.kts(:app) 내의 필드에 입력을 해주세요.
 
 Raspberry Pi 없이 이용을 하기 위해서는, 프로젝트 디렉토리 내  BusStopArrivalScreen.kt, DisembarkationNotificationScreen.kt 내의 isDebugMode를 true로 바꾸고 빌드해주세요.
 
