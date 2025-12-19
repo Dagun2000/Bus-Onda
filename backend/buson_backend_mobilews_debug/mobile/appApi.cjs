@@ -126,7 +126,7 @@ router.post('/telemetry', (req, res) => {
     lon: position.lon
   });
 
-  // ★ 여기 추가: 휴대단말 목록도 갱신 (관리자용)
+  //  여기 추가: 휴대단말 목록도 갱신 (관리자용)
   try {
     const { phoneClients } = require('../server.cjs');
     const prev = phoneClients.get(deviceId) || {};
@@ -293,13 +293,6 @@ const request = createRideRequest({
 // 2. 승차 요청 취소
 // POST /api/v1/ride/cancel
 // ======================
-//
-// Body:
-// {
-//   "deviceId": "android-001",
-//   "requestId": "req-abcdef123"
-// }
-//
 router.post('/ride/cancel', (req, res) => {
   const { deviceId, requestId } = req.body || {};
   const info = rideRequests.get(requestId);
@@ -313,28 +306,82 @@ router.post('/ride/cancel', (req, res) => {
   info.status = 'CANCELLED';
   info.cancelledBy = deviceId || null;
 
+  // 앱에는 즉시 OK 반환
   res.json(wrap(true, { status: 'CANCELLED' }));
 
-  // 버스 단말기에 취소 통보
-  for (const bus of activeBuses.values()) {
-    // 기존 구조 유지: lineNo / busNumber 기준 매칭
-    const sameLine =
-      (info.lineNo && bus.busNumber === info.lineNo) ||
-      (info.busNumber && bus.busNumber === info.busNumber);
+  // -------------------------------
+  // 1) 버스 단말(또는 라즈베리파이)로 취소 통보
+  //    - assignedDevId 우선
+  //    - 없으면 lineNo/busNumber로 deviceClients 매칭
+  //    - 그래도 없으면 raspi '1'
+  // -------------------------------
+  try {
+    const { deviceClients } = require('../server.cjs');
 
-    if (sameLine && bus.ws?.readyState === 1) {
-      bus.ws.send(
-        JSON.stringify({
+    const targets = new Set();
+
+    // (A) 가장 확실: ride/request 때 기록해둔 타겟 단말
+    if (info.assignedDevId) targets.add(String(info.assignedDevId));
+
+    // (B) 보조: 노선 매칭으로도 한 번 더 잡기
+    for (const [devId, d] of deviceClients.entries()) {
+      const meta = d.meta || {};
+      const sameLine =
+        (info.lineNo && meta.bus_number === info.lineNo) ||
+        (info.busNumber && meta.bus_number === info.busNumber);
+
+      if (sameLine) targets.add(String(devId));
+    }
+
+    // (C) 그래도 없으면 fallback raspi
+    if (targets.size === 0) targets.add('1');
+
+    // 전송
+    for (const devId of targets) {
+      const d = deviceClients.get(devId);
+      if (d?.ws?.readyState === 1) {
+        d.ws.send(JSON.stringify({
           type: 'command',
           cmd: 'cancel_request',
-          payload: { requestId },
-        })
-      );
+          ts: Date.now(),
+          payload: { requestId, reason: 'user_cancel' },
+        }));
+        console.log(`[RIDE] cancel_request sent to device=${devId} requestId=${requestId}`);
+      }
     }
+  } catch (e) {
+    console.error('[ride/cancel] send cancel_request to device error:', e);
+  }
+
+  // -------------------------------
+  // 2) (기존 유지) activeBuses에도 취소 통보
+  //    - activeBuses가 실제로 최신 ws를 보장하지 않으면
+  //      위 deviceClients만으로도 충분함(원하면 삭제 가능)
+  // -------------------------------
+  try {
+    for (const bus of activeBuses.values()) {
+      const sameLine =
+        (info.lineNo && bus.busNumber === info.lineNo) ||
+        (info.busNumber && bus.busNumber === info.busNumber);
+
+      if (sameLine && bus.ws?.readyState === 1) {
+        bus.ws.send(JSON.stringify({
+          type: 'command',
+          cmd: 'cancel_request',
+          ts: Date.now(),
+          payload: { requestId, reason: 'user_cancel' },
+        }));
+      }
+    }
+  } catch (e) {
+    console.error('[ride/cancel] activeBuses cancel broadcast error:', e);
   }
 
   console.log(`[RIDE] ${requestId} cancelled by ${deviceId || 'unknown-device'}`);
-  // ---- 휴대단말 취소 카운트 갱신 ----
+
+  // -------------------------------
+  // 3) 휴대단말 취소 카운트 갱신
+  // -------------------------------
   try {
     const { phoneClients } = require('../server.cjs');
     const phone = phoneClients.get(deviceId);
@@ -345,9 +392,9 @@ router.post('/ride/cancel', (req, res) => {
   } catch (e) {
     console.error('[ride/cancel] phoneClients update error:', e);
   }
-
-
 });
+
+
 
 // ======================
 // 3. 하차 요청 - 항상 OK + 오류여도 카운트 증가
