@@ -103,7 +103,7 @@ app/src/main
 ## 👥 팀원 소개 (Contributors)
 * **이정우 (AI & Nav)**: YOLOv8n 모델 파인튜닝 및 TFLite 변환, 환승, 도보 내비게이션 구현
 * **한영준 (PM & Frontend)**: 기획, UI/UX 설계, 안드로이드 앱 개발 (TalkBack 최적화)
-* **이호진 (Embedded)**: 라즈베리 파이 기반 버스 단말기 구축 및 소켓 통신 구현
+* **이다니엘 (Embedded)**: 라즈베리 파이 기반 버스 단말기 구축 및 소켓 통신 구현
 
 ## 📜 라이선스 (License)
 Distributed under the MIT License. See `LICENSE` for more information.
