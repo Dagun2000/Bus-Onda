@@ -173,21 +173,29 @@ function connectWS() {
   ws.addEventListener('message', (ev) => {
     try {
       const msg = JSON.parse(ev.data);
-      // 서버에서 보내줄 표준 이벤트 예시:
-      // {type:"connection_update", deviceType:"bus|phone|stop", list:[...]}
-      // {type:"log", line:"..."}
+
+      // 서버에서 보내는 표준 메시지 처리
       if (msg.type === 'connection_update') {
         if (msg.deviceType === 'phone') renderPhones(msg.list);
         else if (msg.deviceType === 'bus') renderBuses(msg.list);
         else if (msg.deviceType === 'stop') renderStops(msg.list);
         addLog(`실시간 갱신: ${msg.deviceType} ${msg.list?.length ?? 0}건`, 'ok');
-      } else if (msg.type === 'log') {
+      }
+      else if (msg.type === 'log') {
         addLog(msg.line);
       }
+
+      // 추가 부분 — 서버 ping에 응답
+      else if (msg.type === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong' }));
+        addLog('pong 전송됨', 'ok');
+      }
+
     } catch {
       addLog(ev.data);
     }
   });
+);
 }
 
 (async function init() {

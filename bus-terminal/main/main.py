@@ -63,23 +63,29 @@ TOP_INFO_H = 70  # 상단 안내/입력창 높이
 
 def draw_keypad(draw):
     w, h = device.size
-    grid_w = w - PAD_MARGIN*2
-    grid_h = h - TOP_INFO_H - PAD_MARGIN*2
+    grid_w = w - PAD_MARGIN * 2
+    grid_h = h - TOP_INFO_H - PAD_MARGIN * 2
     cell_w = grid_w // GRID[0]
     cell_h = grid_h // GRID[1]
     ox, oy = PAD_MARGIN, TOP_INFO_H + PAD_MARGIN
 
     for r in range(GRID[1]):
         for c in range(GRID[0]):
-            x0 = ox + c*cell_w
-            y0 = oy + r*cell_h
+            x0 = ox + c * cell_w
+            y0 = oy + r * cell_h
             x1 = x0 + cell_w - 4
             y1 = y0 + cell_h - 4
-            draw.rounded_rectangle((x0,y0,x1,y1), radius=10, outline="white", width=2)
+            draw.rounded_rectangle((x0, y0, x1, y1), radius=10, outline="white", width=2)
             label = KEYS[r][c]
             if label:
-                tw, th = draw.textsize(label, font=FONT_BIG)
-                draw.text((x0 + (cell_w - tw)//2, y0 + (cell_h - th)//2), label, font=FONT_BIG, fill="white")
+                bbox = draw.textbbox((0, 0), label, font=FONT_BIG)
+                tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                draw.text(
+                    (x0 + (cell_w - tw) // 2, y0 + (cell_h - th) // 2),
+                    label,
+                    font=FONT_BIG,
+                    fill="white"
+                )
 
 def hit_test(px, py):
     w, h = device.size

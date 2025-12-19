@@ -124,10 +124,8 @@ function attachAppWS(wss /*, deps */) {
             if (distance_m < 50 && !req.flags?.nearSent) {
                 console.log(`[AppWS] bus_nearby → ${deviceId}, dist=${distance_m}`);
                 ws.send(JSON.stringify({
-                    type: 'bus_nearby',
-                    message: '버스가 50m 이내 접근 중입니다.',
-                    distance_m,
-                    ts: new Date().toISOString(),
+                    type: "bus_nearby",
+                    distance_m: distance_m
                 }));
                 req.flags = { ...(req.flags || {}), nearSent: true };
             }
@@ -136,10 +134,8 @@ function attachAppWS(wss /*, deps */) {
             if (distance_m < 10 && !req.flags?.arrivedSent) {
                 console.log(`[AppWS] bus_arrived → ${deviceId}, dist=${distance_m}`);
                 ws.send(JSON.stringify({
-                    type: 'bus_arrived',
-                    message: '버스가 정류장에 도착했습니다.',
-                    distance_m,
-                    ts: new Date().toISOString(),
+                    type: "bus_arrived",
+                    distance_m: distance_m
                 }));
                 req.flags = { ...(req.flags || {}), arrivedSent: true };
             }
@@ -175,5 +171,19 @@ function pushToApp(deviceId, payload) {
     }
     return false;
 }
+// --- WebSocket keepalive (ping) 추가 ---
+setInterval(() => {
+    for (const [deviceId, client] of appClients.entries()) {
+        if (client.ws.readyState === 1) {
+            try {
+                client.ws.ping();
+            } catch (err) {
+                console.log(`[AppWS] ping error for ${deviceId}:`, err);
+            }
+        }
+    }
+}, 15000);
+
+
 
 module.exports = { attachAppWS, appClients, pushToApp };

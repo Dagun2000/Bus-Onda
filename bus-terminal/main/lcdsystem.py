@@ -7,6 +7,8 @@ import time
 
 # ====== LCD 초기화 ======
 serial = spi(port=0, device=0, gpio_DC=24, gpio_RST=25)
+#serial = spi(port=0, device=0, gpio=None)
+
 device = ili9341(serial, width=320, height=240, rotate=0)
 
 # ====== 터치 초기화 ======

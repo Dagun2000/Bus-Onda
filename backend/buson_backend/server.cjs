@@ -14,6 +14,7 @@ const phoneClients = new Map();
 
 module.exports.phoneClients = phoneClients;
 
+const { pushToApp } = require('./mobile/appWs.cjs');
 
 const app = express();
 const PORT = process.env.HTTP_PORT || 3000;
@@ -300,6 +301,27 @@ app.get('/api/connections', (req, res) => {
 });
 
 
+app.post('/api/force/bus_nearby', (req, res) => {
+  const { deviceId, distance } = req.body;
+
+  const ok = pushToApp(deviceId, {
+    type: "bus_nearby",
+    distance_m: distance ?? 12
+  });
+
+  res.json({ success: ok });
+});
+
+app.post('/api/force/bus_arrived', (req, res) => {
+  const { deviceId, distance } = req.body;
+
+  const ok = pushToApp(deviceId, {
+    type: "bus_arrived",
+    distance_m: distance ?? 5
+  });
+
+  return res.json({ success: ok });
+});
 
 
 // ping (GET 방식 기존)
@@ -325,27 +347,34 @@ app.post('/api/command', (req, res) => {
   console.log('[/api/command] targetType =', targetType, 'targetId =', targetId);
 
   console.log('[DEBUG] phoneClients keys =', Array.from(phoneClients.keys()));
-  console.log('[DEBUG] appClients   keys =', Array.from(appClients.keys || [])); // appWs.cjs에서 export 했다면
-
-  let ws = null;
+  console.log('[DEBUG] appClients   keys =', Array.from(appClients.keys()));
 
   if (targetType === 'phone') {
-    const entry = appClients.get(targetId);
-    if (!entry) {
-      return res.json({ success: false, reason: 'Not connected (no such client)' });
+    // 근접/도착 알림 두 개는 특수 처리
+    if (command === 'bus_nearby' || command === 'bus_arrived') {
+      const ok = pushToApp(targetId, {
+        type: command,          // "bus_nearby" 또는 "bus_arrived"
+        distance_m: 5           // 필요하면 UI에서 조정 가능
+      });
+      return res.json({ success: ok });
     }
-    ws = entry.ws;
-  } else {
-    const map = getClientMap(targetType);
-    console.log('[DEBUG] using map =', targetType, 'size =', map ? map.size : null);
-    if (!map) return res.json({ success: false, reason: 'Invalid type' });
 
-    const d = map.get(targetId);
-    if (!d) {
-      return res.json({ success: false, reason: 'Not connected (no such client)' });
-    }
-    ws = d.ws;
+    // 그 외 command는 아직 미지원
+    return res.json({ success: false, reason: 'Unsupported command for phone' });
   }
+
+  // ---- 2) phone 이 아닌 경우는 기존 로직 (버스/정류장 단말) ----
+  let ws = null;
+
+  const map = getClientMap(targetType);
+  console.log('[DEBUG] using map =', targetType, 'size =', map ? map.size : null);
+  if (!map) return res.json({ success: false, reason: 'Invalid type' });
+
+  const d = map.get(targetId);
+  if (!d) {
+    return res.json({ success: false, reason: 'Not connected (no such client)' });
+  }
+  ws = d.ws;
 
   if (!ws || ws.readyState !== 1) {
     return res.json({ success: false, reason: 'Not connected (ws closed)' });
@@ -556,6 +585,20 @@ module.exports = {
   activeBuses,
 };
 
+
+setInterval(() => {
+  console.log("=== AppClients keys:", Array.from(require('./mobile/appWs.cjs').appClients.keys()));
+}, 3000);
+
+setTimeout(() => {
+  console.log("Sending test msg...");
+  pushToApp("android-844dbf09", {
+    type: "bus_nearby",
+    distance_m: 8,
+    message: "테스트",
+    ts: new Date().toISOString()
+  });
+}, 5000);
 
 
 server.listen(PORT, () => {

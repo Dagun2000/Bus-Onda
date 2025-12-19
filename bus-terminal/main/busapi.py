@@ -110,7 +110,9 @@ class BusAPI(threading.Thread):
         print("[BusAPI] RAW 수신됨:", obj)
         t = obj.get("type")
 
-        # info / command / event → 공통 명령 처리
+        # -------------------------
+        # 1) command/event/info → 공통 명령
+        # -------------------------
         if t in ("command", "event", "info"):
             payload = obj.get("payload", {})
             cmd = obj.get("cmd") or payload.get("command")
@@ -118,22 +120,38 @@ class BusAPI(threading.Thread):
             self.emit(cmd, payload)
             return
 
-        # ack 처리
+        # -------------------------
+        # 2) ack
+        # -------------------------
         if t == "ack" and "ts" in obj:
             self.rtt_ms = int((time.time() * 1000) - obj["ts"])
             return
 
-        # 승차 요청 (ride_request)
+        # -------------------------
+        # 3) 승차 요청 ride_request
+        # -------------------------
         if t == "ride_request":
             payload = obj.get("payload", {})
+            
+            # lineName 저장
+            from bussys import load_conf, CONF_PATH
+            cfg = load_conf()
+            cfg["line_name"] = payload.get("lineName")
+            with open(CONF_PATH, "w") as f:
+                json.dump(cfg, f)
+
             self.emit("ride_request", payload)
             return
 
-        # 하차 요청 (alight_request)
+        # -------------------------
+        # 4) 하차 요청 alight_request → drop_request로 통일
+        # -------------------------
         if t == "alight_request":
             payload = obj.get("payload", {})
-            self.emit("drop_request", payload)   # drop_request로 통일
+            print("[BusAPI] 하차 요청 수신됨")
+            self.emit("drop_request", payload)
             return
+
 
 
 

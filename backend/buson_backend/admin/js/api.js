@@ -1,21 +1,3 @@
-//admin/js/api.js
-// API 래퍼 (백엔드 REST와 연동)
-// 백엔드에서 다음 엔드포인트를 제공한다고 가정함:
-//
-// GET  /api/connections?type=phone|bus|stop
-//  -> [{ ip, id, lastSeen, busNumber|null, vehicleNumber|null, stopId|null }]
-//
-// POST /api/command { targetType, targetId, command }
-//  -> { success: true }
-//
-// POST /api/run-code { targetType, targetId, language, code }
-//  -> { success: true, output?: "..." }
-//
-// GET  /api/logs?limit=200
-//  -> ["log line 1", "log line 2", ...]
-//
-// (서버 IP는 동일 오리진 가정. 필요 시 BASE_URL 교체)
-
 const BASE_URL = '';
 
 export async function fetchConnections(type) {

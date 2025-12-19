@@ -5,15 +5,14 @@ def read_gps():
     try:
         ser = serial.Serial("/dev/serial0", baudrate=9600, timeout=1)
     except Exception as e:
-        print("⚠️ GPS 포트 열기 실패:", e)
+        print("GPS 포트 열기 실패:", e)
         return ("NO_MODULE", None)
 
     line = ser.readline().decode("ascii", errors="ignore").strip()
     if not line:
         return ("NO_FIX", None)
 
-    # $GPGGA 또는 $GPRMC 문장만 사용
-    if line.startswith("$GPGGA"):
+    if line.startswith("$GPGGA"):``
         parts = line.split(",")
         if len(parts) < 15:
             return ("NO_FIX", None)
@@ -21,7 +20,7 @@ def read_gps():
         if fix_status == "0":
             return ("NO_FIX", None)
 
-        # 위도/경도 변환 (ddmm.mmmm → dd.ddddd)
+        # 위도/경도 변환 (ddmm.mmmm to dd.ddddd)
         def convert(coord, direction):
             if coord == "" or direction == "":
                 return None
@@ -35,7 +34,7 @@ def read_gps():
         lat = convert(parts[2], parts[3])
         lon = convert(parts[4], parts[5])
         utc_time = parts[1]
-        # UTC → KST 변환
+        # UTC to KST 변환
         if utc_time:
             try:
                 hh = int(utc_time[0:2])

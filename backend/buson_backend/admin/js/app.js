@@ -22,16 +22,30 @@ function rowClickable(tr, type, id) {
   });
 }
 
-function renderPhones(data=[]) {
+function renderPhones(data = []) {
   if (!tblPhones) return;
   tblPhones.innerHTML = '';
+
   data.forEach(d => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${fmt(d.ip)}</td><td>${fmt(d.id)}</td><td>${fmtTime(d.lastSeen)}</td>`;
+    tr.innerHTML = `
+      <td>${fmt(d.ip)}</td>
+      <td>${fmt(d.id)}</td>
+      <td>${fmt(d.lat)}</td>
+      <td>${fmt(d.lon)}</td>
+      <td>${d.requestBus || '-'}</td>
+      <td>${d.boardCount ?? 0}</td>
+      <td>${d.alightCount ?? 0}</td>
+      <td>${d.cancelCount ?? 0}</td>
+      <td>${fmtTime(d.lastSeen)}</td>
+    `;
     rowClickable(tr, 'phone', d.id);
     tblPhones.appendChild(tr);
   });
 }
+
+
+
 
 function renderBuses(data=[]) {
   if (!tblBuses) return;
@@ -121,6 +135,24 @@ function hookButtons() {
     });
   });
 
+  // 휴대단말 빠른 제어
+  document.querySelectorAll('.quick-actions.phone .quick-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const cmd = btn.dataset.command;
+      const id = selected.phone;
+      if (!id) return addLog('먼저 휴대단말 목록에서 단말을 클릭하세요', 'warn');
+
+      const payload = { targetType: 'phone', targetId: id, command: cmd };
+
+      try {
+        const r = await sendCommand(payload);
+        addLog(`휴대단말 빠른 제어 → ${id}: ${cmd}`, r.success ? 'ok' : 'warn');
+      } catch (err) {
+        addLog(`빠른 제어 실패 (${cmd}): ${err.message}`, 'err');
+      }
+    });
+  });
+
   document.getElementById('formCommand')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -205,7 +237,18 @@ function connectWS() {
         else if (msg.deviceType === 'bus') renderBuses(msg.list);
         else if (msg.deviceType === 'stop') renderStops(msg.list);
         addLog(`실시간 갱신: ${msg.deviceType} ${msg.list?.length ?? 0}건`, 'ok');
-      } else if (msg.type === 'log') {
+      }
+      if (msg.type === 'bus_nearby') {
+        addLog(`[APP] 근접 알림: ${msg.distance_m}m`);
+        return;
+      }
+
+      if (msg.type === 'bus_arrived') {
+        addLog(`[APP] 도착 알림: ${msg.distance_m}m`);
+        return;
+      }
+
+      else if (msg.type === 'log') {
         addLog(msg.line);
       }
     } catch {
@@ -223,4 +266,21 @@ function connectWS() {
   setInterval(() => { refresh('phone'); }, 15000);
   setInterval(() => { refresh('bus'); }, 16000);
   setInterval(() => { refresh('stop'); }, 17000);
+  document.querySelectorAll('.quick-actions .quick-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const cmd = btn.dataset.command;
+      const id = selected.phone;
+      if (!id) return addLog('먼저 휴대단말 목록에서 단말을 클릭하세요', 'warn');
+
+      const payload = { targetType: 'phone', targetId: id, command: cmd };
+
+      try {
+        const r = await sendCommand(payload);
+        addLog(`휴대단말 빠른 제어 → ${id}: ${cmd}`, r.success ? 'ok' : 'warn');
+      } catch (err) {
+        addLog(`빠른 제어 실패 (${cmd}): ${err.message}`, 'err');
+      }
+    });
+  });
+
 })();
