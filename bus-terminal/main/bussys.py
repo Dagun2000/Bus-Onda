@@ -345,7 +345,7 @@ def draw_dashboard(wscli: WSClient, gps: GPSPoller, api=None):
     # GPS 상태
     if HAS_GPS:
         if gps.status == "NO_MODULE":
-            gps_line = "GPS 연결되었음"
+            gps_line = "GPS 모듈 없음"
             gps_col = "#bbb"
         elif gps.status == "NO_FIX":
             gps_line = "GPS 연결 되었음"
