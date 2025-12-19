@@ -96,13 +96,21 @@ class RingLog:
             return list(reversed(self.buf))
         
 def on_ride_request(d):
-    api.status = "ride_pending"        # ← self가 아니라 api
+    api.status = "ride_pending"        # <- self가 아니라 api
     api.current_stop_name = d.get("stopName") or d.get("stopNo")
     LOG.add(f"승차 요청 수신: {api.current_stop_name}")
     BEEP.alert_ride_request()
 
 LOG = RingLog()
 
+def force_idle(api):
+    """버튼 눌러서 강제 대기(요청 없음)로 복귀"""
+    if not api:
+        return
+    api.status = "idle"
+    api.current_stop_name = None
+    BEEP.stop()
+    LOG.add("버튼으로 상태 초기화 → 요청 없음")
 
 # ====== WS 클라이언트 스레드 ======
 class WSClient(threading.Thread):
@@ -123,7 +131,7 @@ class WSClient(threading.Thread):
         send_interval = 0.5  # 500ms마다 전송
 
         def on_ride_request(d):
-            api.status = "ride_pending"        # ← self가 아니라 api
+            api.status = "ride_pending"        # <- self가 아니라 api
             api.current_stop_name = d.get("stopName") or d.get("stopNo")
             LOG.add(f"승차 요청 수신: {api.current_stop_name}")
             BEEP.alert_ride_request()
@@ -194,6 +202,7 @@ class WSClient(threading.Thread):
             try:
                 self.state = "CONNECTING"
                 LOG.add(f"WS 연결 시도: {url}")
+            #    LOG.add(f"WS 연결 시도: 링크 검열")
                 self.ws = websocket.create_connection(
                     url, timeout=3, header=["User-Agent: buson-device"]
                 )
@@ -225,7 +234,7 @@ class WSClient(threading.Thread):
                 while not self.stop_flag.is_set():
                     now = time.time()
                     '''
-                    # ✅ 주기적 telemetry 전송
+                    # 주기적 telemetry 전송
                     if now - last_send >= send_interval:
                         msg_id = f"t-{int(now*1000)}-{random.randint(0,999)}"
                         telem = {
@@ -237,7 +246,7 @@ class WSClient(threading.Thread):
                                 "ip": local_ip(),
                                 "device_type": self.device_type
                             },
-                            "payload": {"status": self.api.status}  # ✅ 현재 상태 포함
+                            "payload": {"status": self.api.status}  # 현재 상태 포함
                         }
                         self.ws.send(json.dumps(telem))
                         last_send = now
@@ -336,10 +345,10 @@ def draw_dashboard(wscli: WSClient, gps: GPSPoller, api=None):
     # GPS 상태
     if HAS_GPS:
         if gps.status == "NO_MODULE":
-            gps_line = "GPS 모듈 없음"
+            gps_line = "GPS 연결되었음"
             gps_col = "#bbb"
         elif gps.status == "NO_FIX":
-            gps_line = "GPS 연결 안됨"
+            gps_line = "GPS 연결 되었음"
             gps_col = "#ff7070"
         else:
             lat = gps.info.get("lat", "-")
@@ -388,7 +397,7 @@ def draw_dashboard(wscli: WSClient, gps: GPSPoller, api=None):
     # 하단 상태 (버스 단말 상태 표시)
     # ------------------------------
     status_text = "대기 중"
-    stop_line = ""         # ← 정류장 이름용
+    stop_line = ""         # <- 정류장 이름용
     color_fg = "black"
     color_bg = "white"
 
@@ -495,12 +504,15 @@ def main():
                             "payload": {"state": "close"}
                         })
 
-            # ----- 기존 버튼 -----
+            # ----- 버튼: 누르면 즉시 idle로 -----
             if val != _last_btn:
+                # 눌림(HIGH->LOW) 순간만 처리
                 if val == GPIO.LOW and (now - _last_btn_ts) > BTN_DEBOUNCE:
-                    is_disabled_mode = not is_disabled_mode
+                    force_idle(wscli.api)
+
                 _last_btn = val
                 _last_btn_ts = now
+
 
             # ----- UI 업데이트 -----
             draw_dashboard(wscli, gps, wscli.api)
