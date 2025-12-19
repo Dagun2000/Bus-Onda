@@ -18,9 +18,9 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        
+
         // TMAP API Key (실제 키로 교체 필요)
-        buildConfigField("String", "TMAP_API_KEY", "\"0w9XKk1nFIjvsbdWPiK8apKPkNMx9tIaa97zrB42\"")
+        buildConfigField("String", "TMAP_API_KEY", "\"여기에입력\"")
     }
 
     buildTypes {
